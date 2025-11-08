@@ -229,9 +229,21 @@ function validateForm(formId) {
  */
 async function exportToExcel(streamId) {
     try {
-        window.location.href = `export.php?stream_id=${streamId}&format=excel`;
+        window.location.href = `exports.php?stream_id=${streamId}&format=excel`;
     } catch (error) {
         console.error('Error exporting to Excel:', error);
+        alert('Error exporting timetable. Please try again.');
+    }
+}
+
+/**
+ * Export timetable to PDF
+ */
+async function exportToPDF(streamId) {
+    try {
+        window.location.href = `exports.php?stream_id=${streamId}&format=pdf`;
+    } catch (error) {
+        console.error('Error exporting to PDF:', error);
         alert('Error exporting timetable. Please try again.');
     }
 }

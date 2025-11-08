@@ -7,6 +7,7 @@ requireLogin();
 
 $pageTitle = 'Dashboard - Busisi Timetable Generator';
 $showNav = true;
+$isAdmin = true;
 
 // Get statistics
 $db = getDB();

@@ -80,8 +80,11 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                         <button type="button" class="btn btn-outline-primary" onclick="window.print()">
                             <i class="bi bi-printer"></i> Print
                         </button>
-                        <a href="export.php?stream_id=<?php echo $selectedStreamId; ?>" class="btn btn-outline-success">
+                        <a href="exports.php?stream_id=<?php echo $selectedStreamId; ?>" class="btn btn-outline-success">
                             <i class="bi bi-file-earmark-excel"></i> Export Excel
+                        </a>
+                        <a href="exports.php?stream_id=<?php echo $selectedStreamId; ?>&format=pdf" class="btn btn-outline-danger">
+                            <i class="bi bi-file-earmark-pdf"></i> Export PDF
                         </a>
                     </div>
                 </div>

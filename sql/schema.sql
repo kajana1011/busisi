@@ -13,7 +13,7 @@ USE `busisi`;
 -- Table structure for `admins`
 -- --------------------------------------------------------
 
-CREATE TABLE `admins` (
+CREATE TABLE IF NOT EXISTS `admins` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `username` varchar(50) NOT NULL,
   `password` varchar(255) NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE `admins` (
 -- Table structure for `forms`
 -- --------------------------------------------------------
 
-CREATE TABLE `forms` (
+CREATE TABLE IF NOT EXISTS `forms` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL,
   `description` text DEFAULT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE `forms` (
 -- Table structure for `streams`
 -- --------------------------------------------------------
 
-CREATE TABLE `streams` (
+CREATE TABLE IF NOT EXISTS `streams` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `form_id` int(11) NOT NULL,
   `name` varchar(50) NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE `streams` (
 -- Table structure for `subjects`
 -- --------------------------------------------------------
 
-CREATE TABLE `subjects` (
+CREATE TABLE IF NOT EXISTS `subjects` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `code` varchar(20) DEFAULT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE `subjects` (
 -- Table structure for `teachers`
 -- --------------------------------------------------------
 
-CREATE TABLE `teachers` (
+CREATE TABLE IF NOT EXISTS `teachers` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `first_name` varchar(50) NOT NULL,
   `last_name` varchar(50) NOT NULL,
@@ -88,7 +88,7 @@ CREATE TABLE `teachers` (
 -- Table structure for `subject_assignments`
 -- --------------------------------------------------------
 
-CREATE TABLE `subject_assignments` (
+CREATE TABLE IF NOT EXISTS `subject_assignments` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `stream_id` int(11) NOT NULL,
   `subject_id` int(11) NOT NULL,
@@ -108,7 +108,7 @@ CREATE TABLE `subject_assignments` (
 -- Table structure for `school_settings`
 -- --------------------------------------------------------
 
-CREATE TABLE `school_settings` (
+CREATE TABLE IF NOT EXISTS `school_settings` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `setting_key` varchar(100) NOT NULL,
   `setting_value` text NOT NULL,
@@ -121,7 +121,7 @@ CREATE TABLE `school_settings` (
 -- Table structure for `special_periods`
 -- --------------------------------------------------------
 
-CREATE TABLE `special_periods` (
+CREATE TABLE IF NOT EXISTS `special_periods` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `day_of_week` int(11) NOT NULL COMMENT '1=Monday, 5=Friday, 7=Sunday',
@@ -136,7 +136,7 @@ CREATE TABLE `special_periods` (
 -- Table structure for `break_periods`
 -- --------------------------------------------------------
 
-CREATE TABLE `break_periods` (
+CREATE TABLE IF NOT EXISTS `break_periods` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL,
   `period_number` int(11) NOT NULL,
@@ -149,7 +149,7 @@ CREATE TABLE `break_periods` (
 -- Table structure for `timetables`
 -- --------------------------------------------------------
 
-CREATE TABLE `timetables` (
+CREATE TABLE IF NOT EXISTS `timetables` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `stream_id` int(11) NOT NULL,
   `day_of_week` int(11) NOT NULL COMMENT '1=Monday, 5=Friday, 7=Sunday',
@@ -177,7 +177,7 @@ CREATE TABLE `timetables` (
 -- Table structure for `generation_history`
 -- --------------------------------------------------------
 
-CREATE TABLE `generation_history` (
+CREATE TABLE IF NOT EXISTS `generation_history` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `generated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `generated_by` int(11) DEFAULT NULL,

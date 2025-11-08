@@ -8,6 +8,36 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
 $error = '';
 $success = '';
 
+// Check if database and tables already exist
+require_once 'config/database.php';
+
+try {
+    $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
+    $pdo = new PDO($dsn, DB_USER, DB_PASS);
+
+    // Check if all required tables exist
+    $requiredTables = ['admins', 'forms', 'streams', 'subjects', 'teachers', 'subject_assignments', 'school_settings', 'special_periods', 'break_periods', 'timetables', 'generation_history'];
+
+    $stmt = $pdo->query("SHOW TABLES");
+    $existingTables = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $allTablesExist = true;
+    foreach ($requiredTables as $table) {
+        if (!in_array($table, $existingTables)) {
+            $allTablesExist = false;
+            break;
+        }
+    }
+
+    if ($allTablesExist) {
+        // Database is already set up, redirect to login
+        header('Location: admin/login.php');
+        exit;
+    }
+} catch (PDOException $e) {
+    // Database doesn't exist or connection failed, proceed with setup
+}
+
 // Step 1: Database Connection Test
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
     require_once 'config/database.php';

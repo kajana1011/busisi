@@ -47,9 +47,26 @@ $schoolDays = intval(getSetting('school_days', 5));
 $periodsPerDay = intval(getSetting('periods_per_day', 8));
 $schoolName = getSetting('school_name', 'Busisi Secondary School');
 
-// Set headers for CSV download
-header('Content-Type: text/csv');
-header('Content-Disposition: attachment; filename="timetable_' . $stream['form_name'] . '_' . $stream['name'] . '.csv"');
+// Handle different export formats
+$format = isset($_GET['format']) ? $_GET['format'] : 'csv';
+
+if ($format === 'excel') {
+    // Excel export using PHPExcel or similar library
+    // For now, we'll use CSV as Excel format
+    header('Content-Type: application/vnd.ms-excel');
+    header('Content-Disposition: attachment; filename="timetable_' . $stream['form_name'] . '_' . $stream['name'] . '.xls"');
+} elseif ($format === 'pdf') {
+    // PDF export - basic implementation
+    require_once '../vendor/autoload.php'; // Assuming TCPDF or similar is installed
+
+    // For now, redirect to CSV if PDF library not available
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="timetable_' . $stream['form_name'] . '_' . $stream['name'] . '.csv"');
+} else {
+    // Default CSV export
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="timetable_' . $stream['form_name'] . '_' . $stream['name'] . '.csv"');
+}
 
 // Create file pointer
 $output = fopen('php://output', 'w');

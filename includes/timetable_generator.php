@@ -73,16 +73,34 @@ class TimetableGenerator {
             }
 
             // Log generation
+            $adminId = $_SESSION['admin_id'] ?? null;
+            if ($adminId !== null) {
+                // Check if admin exists
+                $checkStmt = $this->db->prepare("SELECT id FROM admins WHERE id = ?");
+                $checkStmt->execute([$adminId]);
+                if (!$checkStmt->fetch()) {
+                    $adminId = null;
+                }
+            }
             $stmt = $this->db->prepare("INSERT INTO generation_history (generated_by, status, notes)
                                        VALUES (?, 'success', ?)");
-            $stmt->execute([$_SESSION['admin_id'] ?? null, 'Generated for ' . count($this->streams) . ' streams']);
+            $stmt->execute([$adminId, 'Generated for ' . count($this->streams) . ' streams']);
 
             return true;
         } catch (Exception $e) {
             // Log error
+            $adminId = $_SESSION['admin_id'] ?? null;
+            if ($adminId !== null) {
+                // Check if admin exists
+                $checkStmt = $this->db->prepare("SELECT id FROM admins WHERE id = ?");
+                $checkStmt->execute([$adminId]);
+                if (!$checkStmt->fetch()) {
+                    $adminId = null;
+                }
+            }
             $stmt = $this->db->prepare("INSERT INTO generation_history (generated_by, status, notes)
                                        VALUES (?, 'failed', ?)");
-            $stmt->execute([$_SESSION['admin_id'] ?? null, $e->getMessage()]);
+            $stmt->execute([$adminId, $e->getMessage()]);
 
             throw $e;
         }
@@ -222,7 +240,7 @@ class TimetableGenerator {
             }
 
             // Check for even distribution (avoid too many periods on same day)
-            if ($this->hasToManyPeriodsOnDay($assignment['subject_id'], $day, $isDouble ? 2 : 1)) {
+            if ($this->hasTooManyPeriodsOnDay($assignment['subject_id'], $day, $isDouble ? 2 : 1)) {
                 continue;
             }
 
@@ -274,7 +292,7 @@ class TimetableGenerator {
     /**
      * Check if subject already has too many periods on this day
      */
-    private function hasToManyPeriodsOnDay($subjectId, $day, $addingCount) {
+    private function hasTooManyPeriodsOnDay($subjectId, $day, $addingCount) {
         $count = 0;
         for ($p = 1; $p <= $this->periodsPerDay; $p++) {
             $slot = $this->timetable[$day][$p];
