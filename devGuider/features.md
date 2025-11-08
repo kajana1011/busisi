@@ -1,1 +1,0 @@
-1. supports only 2 breaks per day
