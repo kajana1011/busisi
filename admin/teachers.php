@@ -7,6 +7,7 @@ requireLogin();
 
 $pageTitle = 'Teachers - Busisi Timetable Generator';
 $showNav = true;
+$isAdmin = true;
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -18,9 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lastName = sanitize($_POST['last_name']);
             $email = sanitize($_POST['email'] ?? '');
             $phone = sanitize($_POST['phone'] ?? '');
-            $employeeId = sanitize($_POST['employee_id'] ?? '');
 
-            if (createTeacher($firstName, $lastName, $email, $phone, $employeeId)) {
+            if (createTeacher($firstName, $lastName, $email, $phone)) {
                 showAlert('Teacher created successfully', 'success');
             } else {
                 showAlert('Error creating teacher', 'danger');
@@ -33,9 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lastName = sanitize($_POST['last_name']);
             $email = sanitize($_POST['email'] ?? '');
             $phone = sanitize($_POST['phone'] ?? '');
-            $employeeId = sanitize($_POST['employee_id'] ?? '');
 
-            if (updateTeacher($id, $firstName, $lastName, $email, $phone, $employeeId)) {
+            if (updateTeacher($id, $firstName, $lastName, $email, $phone)) {
                 showAlert('Teacher updated successfully', 'success');
             } else {
                 showAlert('Error updating teacher', 'danger');
@@ -85,24 +84,45 @@ $teachers = getAllTeachers();
                         <table class="table table-hover">
                             <thead>
                                 <tr>
-                                    <th>Name</th>
-                                    <th>Employee ID</th>
-                                    <th>Email</th>
-                                    <th>Phone</th>
-                                    <th>Added</th>
+                                    <th style="width: 200px;">Name</th>
+                                    <th>Subjects & Streams</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($teachers as $teacher): ?>
+                                    <?php $assignments = getTeacherAssignments($teacher['id']); ?>
+                                    <?php
+                                    $totalPeriods = 0;
+                                    foreach ($assignments as $assignment) {
+                                        $totalPeriods += $assignment['periods_per_week'];
+                                    }
+                                    ?>
                                     <tr>
                                         <td>
                                             <strong><?php echo htmlspecialchars($teacher['first_name'] . ' ' . $teacher['last_name']); ?></strong>
+                                            <?php if ($totalPeriods > 0): ?>
+                                                <small class="text-muted">(<?php echo $totalPeriods; ?>)</small>
+                                            <?php endif; ?>
                                         </td>
-                                        <td><?php echo htmlspecialchars($teacher['employee_id'] ?? '-'); ?></td>
-                                        <td><?php echo htmlspecialchars($teacher['email'] ?? '-'); ?></td>
-                                        <td><?php echo htmlspecialchars($teacher['phone'] ?? '-'); ?></td>
-                                        <td><?php echo date('M d, Y', strtotime($teacher['created_at'])); ?></td>
+                                        <td>
+                                            <?php if (!empty($assignments)): ?>
+                                                <div class="small">
+                                                    <?php
+                                                    $subjectStreams = [];
+                                                    foreach ($assignments as $assignment) {
+                                                        $formNumber = preg_replace('/[^0-9]/', '', $assignment['form_name']);
+                                                        $streamCode = $formNumber . $assignment['stream_name'];
+                                                        $subjectName = $assignment['subject_name'] . ($assignment['subject_code'] ? ' (' . $assignment['subject_code'] . ')' : '');
+                                                        $subjectStreams[] = $subjectName . ' - ' . $streamCode;
+                                                    }
+                                                    echo implode('<br>', $subjectStreams);
+                                                    ?>
+                                                </div>
+                                            <?php else: ?>
+                                                <span class="text-muted">No assignments</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-end">
                                             <button type="button" class="btn btn-sm btn-outline-primary"
                                                     onclick="editTeacher(<?php echo htmlspecialchars(json_encode($teacher)); ?>)">
@@ -149,11 +169,6 @@ $teachers = getAllTeachers();
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label for="employeeId" class="form-label">Employee ID</label>
-                        <input type="text" class="form-control" id="employeeId" name="employee_id"
-                               placeholder="e.g., EMP001">
-                    </div>
-                    <div class="mb-3">
                         <label for="email" class="form-label">Email</label>
                         <input type="email" class="form-control" id="email" name="email"
                                placeholder="teacher@example.com">
@@ -195,10 +210,7 @@ $teachers = getAllTeachers();
                             <input type="text" class="form-control" id="editLastName" name="last_name" required>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="editEmployeeId" class="form-label">Employee ID</label>
-                        <input type="text" class="form-control" id="editEmployeeId" name="employee_id">
-                    </div>
+
                     <div class="mb-3">
                         <label for="editEmail" class="form-label">Email</label>
                         <input type="email" class="form-control" id="editEmail" name="email">
@@ -222,7 +234,7 @@ function editTeacher(teacher) {
     document.getElementById('editId').value = teacher.id;
     document.getElementById('editFirstName').value = teacher.first_name;
     document.getElementById('editLastName').value = teacher.last_name;
-    document.getElementById('editEmployeeId').value = teacher.employee_id || '';
+
     document.getElementById('editEmail').value = teacher.email || '';
     document.getElementById('editPhone').value = teacher.phone || '';
     new bootstrap.Modal(document.getElementById('editModal')).show();

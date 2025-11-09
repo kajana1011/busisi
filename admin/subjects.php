@@ -7,6 +7,7 @@ requireLogin();
 
 $pageTitle = 'Subjects - Busisi Timetable Generator';
 $showNav = true;
+$isAdmin = true;
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -84,7 +85,7 @@ $subjects = getAllSubjects();
                                     <th>Name</th>
                                     <th>Code</th>
                                     <th>Description</th>
-                                    <th>Created</th>
+                                    <th>Assigned Streams</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
@@ -94,7 +95,7 @@ $subjects = getAllSubjects();
                                         <td><strong><?php echo htmlspecialchars($subject['name']); ?></strong></td>
                                         <td><?php echo htmlspecialchars($subject['code'] ?? '-'); ?></td>
                                         <td><?php echo htmlspecialchars($subject['description'] ?? '-'); ?></td>
-                                        <td><?php echo date('M d, Y', strtotime($subject['created_at'])); ?></td>
+                                        <td><?php echo htmlspecialchars(getAssignedStreamsForSubject($subject['id']) ?: '-'); ?></td>
                                         <td class="text-end">
                                             <button type="button" class="btn btn-sm btn-outline-primary"
                                                     onclick="editSubject(<?php echo htmlspecialchars(json_encode($subject)); ?>)">

@@ -7,6 +7,7 @@ requireLogin();
 
 $pageTitle = 'View Timetables - Busisi Timetable Generator';
 $showNav = true;
+$isAdmin = true;
 
 $db = getDB();
 

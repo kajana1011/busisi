@@ -7,6 +7,7 @@ requireLogin();
 
 $pageTitle = 'Settings - Busisi Timetable Generator';
 $showNav = true;
+$isAdmin = true;
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

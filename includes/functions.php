@@ -293,23 +293,41 @@ function getTeacherName($id) {
 }
 
 /**
+ * Get teacher assignments with subjects and streams
+ */
+function getTeacherAssignments($teacherId) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT sa.*,
+                         s.name as stream_name, f.name as form_name,
+                         sub.name as subject_name, sub.code as subject_code
+                         FROM subject_assignments sa
+                         JOIN streams s ON sa.stream_id = s.id
+                         JOIN forms f ON s.form_id = f.id
+                         JOIN subjects sub ON sa.subject_id = sub.id
+                         WHERE sa.teacher_id = ?
+                         ORDER BY f.display_order, s.name, sub.name");
+    $stmt->execute([$teacherId]);
+    return $stmt->fetchAll();
+}
+
+/**
  * Create teacher
  */
-function createTeacher($firstName, $lastName, $email = '', $phone = '', $employeeId = '') {
+function createTeacher($firstName, $lastName, $email = '', $phone = '') {
     $db = getDB();
-    $stmt = $db->prepare("INSERT INTO teachers (first_name, last_name, email, phone, employee_id)
-                         VALUES (?, ?, ?, ?, ?)");
-    return $stmt->execute([$firstName, $lastName, $email, $phone, $employeeId]);
+    $stmt = $db->prepare("INSERT INTO teachers (first_name, last_name, email, phone)
+                         VALUES (?, ?, ?, ?)");
+    return $stmt->execute([$firstName, $lastName, $email, $phone]);
 }
 
 /**
  * Update teacher
  */
-function updateTeacher($id, $firstName, $lastName, $email = '', $phone = '', $employeeId = '') {
+function updateTeacher($id, $firstName, $lastName, $email = '', $phone = '') {
     $db = getDB();
-    $stmt = $db->prepare("UPDATE teachers SET first_name = ?, last_name = ?, email = ?, phone = ?, employee_id = ?
+    $stmt = $db->prepare("UPDATE teachers SET first_name = ?, last_name = ?, email = ?, phone = ?
                          WHERE id = ?");
-    return $stmt->execute([$firstName, $lastName, $email, $phone, $employeeId, $id]);
+    return $stmt->execute([$firstName, $lastName, $email, $phone, $id]);
 }
 
 /**
@@ -387,6 +405,25 @@ function deleteAssignment($id) {
 }
 
 /**
+ * Get assignment by ID
+ */
+function getAssignmentById($id) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT sa.*,
+                         s.name as stream_name, f.name as form_name,
+                         sub.name as subject_name, sub.code as subject_code,
+                         CONCAT(t.first_name, ' ', t.last_name) as teacher_name
+                         FROM subject_assignments sa
+                         JOIN streams s ON sa.stream_id = s.id
+                         JOIN forms f ON s.form_id = f.id
+                         JOIN subjects sub ON sa.subject_id = sub.id
+                         JOIN teachers t ON sa.teacher_id = t.id
+                         WHERE sa.id = ?");
+    $stmt->execute([$id]);
+    return $stmt->fetch();
+}
+
+/**
  * Get all special periods
  */
 function getAllSpecialPeriods() {
@@ -457,6 +494,30 @@ function formatTime($minutes) {
     $hours = floor($minutes / 60);
     $mins = $minutes % 60;
     return sprintf('%02d:%02d', $hours, $mins);
+}
+
+/**
+ * Get assigned streams for a subject (formatted as "1A,3B")
+ */
+function getAssignedStreamsForSubject($subjectId) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT DISTINCT f.name as form_name, s.name as stream_name
+                         FROM subject_assignments sa
+                         JOIN streams s ON sa.stream_id = s.id
+                         JOIN forms f ON s.form_id = f.id
+                         WHERE sa.subject_id = ?
+                         ORDER BY f.display_order, s.name");
+    $stmt->execute([$subjectId]);
+    $assignments = $stmt->fetchAll();
+
+    $streams = [];
+    foreach ($assignments as $assignment) {
+        // Extract number from form_name (e.g., "Form 1" -> "1")
+        $formNumber = preg_replace('/[^0-9]/', '', $assignment['form_name']);
+        $streams[] = $formNumber . $assignment['stream_name'];
+    }
+
+    return implode(', ', $streams);
 }
 
 /**

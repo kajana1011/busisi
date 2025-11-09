@@ -7,6 +7,7 @@ requireLogin();
 
 $pageTitle = 'Subject Assignments - Busisi Timetable Generator';
 $showNav = true;
+$isAdmin = true;
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -14,29 +15,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($action) {
         case 'create':
-            $streamId = intval($_POST['stream_id']);
+            $streamIds = $_POST['stream_ids'] ?? [];
             $subjectId = intval($_POST['subject_id']);
             $teacherId = intval($_POST['teacher_id']);
             $periodsPerWeek = intval($_POST['periods_per_week']);
 
-            if (createAssignment($streamId, $subjectId, $teacherId, $periodsPerWeek)) {
-                showAlert('Assignment created successfully', 'success');
+            if (empty($streamIds)) {
+                showAlert('Please select at least one stream.', 'warning');
             } else {
-                showAlert('Error creating assignment. This subject may already be assigned to this stream.', 'danger');
+                $successCount = 0;
+                $errorCount = 0;
+
+                foreach ($streamIds as $streamId) {
+                    if (createAssignment(intval($streamId), $subjectId, $teacherId, $periodsPerWeek)) {
+                        $successCount++;
+                    } else {
+                        $errorCount++;
+                    }
+                }
+
+                if ($successCount > 0) {
+                    showAlert("Successfully created $successCount assignment(s)." . ($errorCount > 0 ? " $errorCount failed (may already exist)." : ""), $errorCount > 0 ? 'warning' : 'success');
+                } else {
+                    showAlert('Error creating assignments. These subjects may already be assigned to the selected streams.', 'danger');
+                }
             }
             break;
 
         case 'update':
             $id = intval($_POST['id']);
-            $streamId = intval($_POST['stream_id']);
+            $streamIds = $_POST['stream_ids'] ?? [];
             $subjectId = intval($_POST['subject_id']);
             $teacherId = intval($_POST['teacher_id']);
             $periodsPerWeek = intval($_POST['periods_per_week']);
 
-            if (updateAssignment($id, $streamId, $subjectId, $teacherId, $periodsPerWeek)) {
-                showAlert('Assignment updated successfully', 'success');
+            if (empty($streamIds)) {
+                showAlert('Please select at least one stream.', 'warning');
             } else {
-                showAlert('Error updating assignment', 'danger');
+                // Get current assignment to know what to update
+                $currentAssignment = getAssignmentById($id);
+                if (!$currentAssignment) {
+                    showAlert('Assignment not found.', 'danger');
+                    break;
+                }
+
+                // Delete existing assignments for this subject in the selected streams
+                // This removes any other teachers' assignments for this subject in these streams
+                $db = getDB();
+                $placeholders = str_repeat('?,', count($streamIds) - 1) . '?';
+                $stmt = $db->prepare("DELETE FROM subject_assignments WHERE subject_id = ? AND stream_id IN ($placeholders)");
+                $stmt->execute(array_merge([$subjectId], $streamIds));
+
+                // Create new assignments for the selected teacher
+                $successCount = 0;
+                foreach ($streamIds as $streamId) {
+                    if (createAssignment(intval($streamId), $subjectId, $teacherId, $periodsPerWeek)) {
+                        $successCount++;
+                    }
+                }
+
+                if ($successCount > 0) {
+                    showAlert("Successfully updated assignments. Created $successCount assignment(s).", 'success');
+                } else {
+                    showAlert('Error updating assignments.', 'danger');
+                }
             }
             break;
 
@@ -156,15 +198,37 @@ $teachers = getAllTeachers();
                 <div class="modal-body">
                     <input type="hidden" name="action" value="create">
                     <div class="mb-3">
-                        <label for="streamId" class="form-label">Stream *</label>
-                        <select class="form-select" id="streamId" name="stream_id" required>
-                            <option value="">Select Stream</option>
-                            <?php foreach ($streams as $stream): ?>
-                                <option value="<?php echo $stream['id']; ?>">
-                                    <?php echo htmlspecialchars($stream['form_name'] . ' - ' . $stream['name']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label for="streamIds" class="form-label">Streams *</label>
+                        <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                            <?php
+                            $forms = getAllForms();
+                            foreach ($forms as $form):
+                                $formStreams = getStreamsByForm($form['id']);
+                                if (!empty($formStreams)):
+                            ?>
+                                <div class="mb-2">
+                                    <strong><?php echo htmlspecialchars($form['name']); ?>:</strong>
+                                    <div class="row mt-1">
+                                        <?php foreach ($formStreams as $stream): ?>
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox"
+                                                           id="stream_<?php echo $stream['id']; ?>"
+                                                           name="stream_ids[]" value="<?php echo $stream['id']; ?>">
+                                                    <label class="form-check-label" for="stream_<?php echo $stream['id']; ?>">
+                                                        <?php echo htmlspecialchars($stream['name']); ?>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php
+                                endif;
+                            endforeach;
+                            ?>
+                        </div>
+                        <small class="text-muted">Select all streams where this teacher will teach this subject</small>
                     </div>
                     <div class="mb-3">
                         <label for="subjectId" class="form-label">Subject *</label>
@@ -220,14 +284,37 @@ $teachers = getAllTeachers();
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="id" id="editId">
                     <div class="mb-3">
-                        <label for="editStreamId" class="form-label">Stream *</label>
-                        <select class="form-select" id="editStreamId" name="stream_id" required>
-                            <?php foreach ($streams as $stream): ?>
-                                <option value="<?php echo $stream['id']; ?>">
-                                    <?php echo htmlspecialchars($stream['form_name'] . ' - ' . $stream['name']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label for="editStreamIds" class="form-label">Streams *</label>
+                        <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                            <?php
+                            $forms = getAllForms();
+                            foreach ($forms as $form):
+                                $formStreams = getStreamsByForm($form['id']);
+                                if (!empty($formStreams)):
+                            ?>
+                                <div class="mb-2">
+                                    <strong><?php echo htmlspecialchars($form['name']); ?>:</strong>
+                                    <div class="row mt-1">
+                                        <?php foreach ($formStreams as $stream): ?>
+                                            <div class="col-md-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input edit-stream-checkbox" type="checkbox"
+                                                           id="edit_stream_<?php echo $stream['id']; ?>"
+                                                           name="stream_ids[]" value="<?php echo $stream['id']; ?>">
+                                                    <label class="form-check-label" for="edit_stream_<?php echo $stream['id']; ?>">
+                                                        <?php echo htmlspecialchars($stream['name']); ?>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php
+                                endif;
+                            endforeach;
+                            ?>
+                        </div>
+                        <small class="text-muted">Select all streams where this teacher will teach this subject</small>
                     </div>
                     <div class="mb-3">
                         <label for="editSubjectId" class="form-label">Subject *</label>
@@ -268,10 +355,30 @@ $teachers = getAllTeachers();
 <script>
 function editAssignment(assignment) {
     document.getElementById('editId').value = assignment.id;
-    document.getElementById('editStreamId').value = assignment.stream_id;
     document.getElementById('editSubjectId').value = assignment.subject_id;
     document.getElementById('editTeacherId').value = assignment.teacher_id;
     document.getElementById('editPeriodsPerWeek').value = assignment.periods_per_week;
+
+    // Clear all checkboxes first
+    document.querySelectorAll('.edit-stream-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+
+    // Get all assignments for this teacher-subject combination
+    fetch('ajax/get_teacher_subject_assignments.php?teacher_id=' + assignment.teacher_id + '&subject_id=' + assignment.subject_id)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                data.stream_ids.forEach(streamId => {
+                    const checkbox = document.getElementById('edit_stream_' + streamId);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                    }
+                });
+            }
+        })
+        .catch(error => console.error('Error loading assignments:', error));
+
     new bootstrap.Modal(document.getElementById('editModal')).show();
 }
 </script>
