@@ -42,6 +42,26 @@ if ($selectedStreamId) {
 $schoolDays = intval(getSetting('school_days', 5));
 $periodsPerDay = intval(getSetting('periods_per_day', 8));
 $schoolName = getSetting('school_name', 'Busisi Secondary School');
+$schoolStartTime = getSetting('school_start_time', '08:00');
+$periodDuration = intval(getSetting('period_duration', 40));
+
+// Helper function to calculate period times
+function calculatePeriodTime($startTime, $periodNumber, $duration) {
+    $startDateTime = DateTime::createFromFormat('H:i', $startTime);
+    if (!$startDateTime) {
+        return 'N/A';
+    }
+    
+    // Calculate start time for this period
+    $periodStart = clone $startDateTime;
+    $periodStart->add(new DateInterval('PT' . (($periodNumber - 1) * $duration) . 'M'));
+    
+    // Calculate end time for this period
+    $periodEnd = clone $periodStart;
+    $periodEnd->add(new DateInterval('PT' . $duration . 'M'));
+    
+    return $periodStart->format('H:i') . ' - ' . $periodEnd->format('H:i');
+}
 
 // Get stream info
 $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
@@ -128,19 +148,24 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                         <table class="table table-bordered table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 80px;">Period</th>
-                                    <?php for ($day = 1; $day <= $schoolDays; $day++): ?>
-                                        <th class="text-center"><?php echo getDayName($day); ?></th>
+                                    <th style="width: 120px;">Day / Time</th>
+                                    <?php for ($period = 1; $period <= $periodsPerDay; $period++): ?>
+                                        <th class="text-center" style="font-size: 0.85rem;">
+                                            <strong>Period <?php echo $period; ?></strong><br>
+                                            <small><?php echo calculatePeriodTime($schoolStartTime, $period, $periodDuration); ?></small>
+                                        </th>
                                     <?php endfor; ?>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php for ($period = 1; $period <= $periodsPerDay; $period++): ?>
+                                <?php for ($day = 1; $day <= $schoolDays; $day++): ?>
                                     <tr>
-                                        <td class="text-center fw-bold bg-light"><?php echo $period; ?></td>
-                                        <?php for ($day = 1; $day <= $schoolDays; $day++): ?>
-                                            <?php
-                                            $slot = $timetable[$day][$period] ?? null;
+                                        <td class="text-center fw-bold bg-light"><?php echo getDayName($day); ?></td>
+                                        <?php
+                                            $p = 1;
+                                            while ($p <= $periodsPerDay) {
+                                                $period = $p;
+                                                $slot = $timetable[$day][$period] ?? null;
                                             $isBreak = $slot && $slot['is_break'];
                                             $isSpecial = $slot && $slot['is_special'];
                                             $isDouble = $slot && $slot['is_double_period'];
@@ -157,6 +182,93 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                                             if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']) {
                                                 $cellClass .= ' draggable';
                                             }
+
+                                            // Handle double periods: render two consecutive cells when appropriate
+                                            if ($isDouble && $p < $periodsPerDay) {
+                                                $nextSlot = $timetable[$day][$p + 1] ?? null;
+
+                                                // Validate next slot: it must not be break/special and if occupied must match this slot
+                                                $canRenderDouble = true;
+                                                if ($nextSlot) {
+                                                    if (!empty($nextSlot['is_break']) || !empty($nextSlot['is_special'])) {
+                                                        $canRenderDouble = false;
+                                                    } elseif (!empty($nextSlot['subject_id']) && (
+                                                        $nextSlot['subject_id'] != ($slot['subject_id'] ?? 0) ||
+                                                        $nextSlot['teacher_id'] != ($slot['teacher_id'] ?? 0)
+                                                    )) {
+                                                        $canRenderDouble = false;
+                                                    }
+                                                }
+
+                                                if ($canRenderDouble) {
+                                                    // First half
+                                                    ?>
+                                                    <td class="<?php echo $cellClass; ?>"
+                                                        <?php if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']): ?>
+                                                            draggable="true"
+                                                            data-stream-id="<?php echo $selectedStreamId; ?>"
+                                                            data-day="<?php echo $day; ?>"
+                                                            data-period="<?php echo $p; ?>"
+                                                            data-subject-id="<?php echo $slot['subject_id']; ?>"
+                                                            data-teacher-id="<?php echo $slot['teacher_id']; ?>"
+                                                            data-is-double="1"
+                                                        <?php endif; ?>
+                                                        >
+                                                        <?php if ($slot && $slot['subject_id']): ?>
+                                                            <div class="fw-bold">
+                                                                <?php echo htmlspecialchars($slot['subject_name']); ?>
+                                                                <span class="badge bg-info ms-1">Double (1/2)</span>
+                                                            </div>
+                                                            <small class="text-muted d-block">
+                                                                <?php echo htmlspecialchars($slot['teacher_name']); ?>
+                                                            </small>
+                                                            <?php if ($slot['subject_code']): ?>
+                                                                <small class="text-muted">(<?php echo htmlspecialchars($slot['subject_code']); ?>)</small>
+                                                            <?php endif; ?>
+                                                        <?php else: ?>
+                                                            <span class="text-muted">Free</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <?php
+                                                    // Second half — mirror
+                                                    $second = $nextSlot ? $nextSlot : $slot;
+                                                    $secondIsBreak = $second && !empty($second['is_break']);
+                                                    $secondIsSpecial = $second && !empty($second['is_special']);
+                                                    ?>
+                                                    <td class="<?php echo $cellClass; ?>"
+                                                        <?php if (!$secondIsBreak && !$secondIsSpecial && $second && ($second['subject_id'] ?? null)): ?>
+                                                            draggable="true"
+                                                            data-stream-id="<?php echo $selectedStreamId; ?>"
+                                                            data-day="<?php echo $day; ?>"
+                                                            data-period="<?php echo $p + 1; ?>"
+                                                            data-subject-id="<?php echo $second['subject_id']; ?>"
+                                                            data-teacher-id="<?php echo $second['teacher_id']; ?>"
+                                                            data-is-double="2"
+                                                        <?php endif; ?>
+                                                        >
+                                                        <?php if ($second && ($second['subject_id'] ?? null)): ?>
+                                                            <div class="fw-bold">
+                                                                <?php echo htmlspecialchars($second['subject_name']); ?>
+                                                                <span class="badge bg-info ms-1">Double (2/2)</span>
+                                                            </div>
+                                                            <small class="text-muted d-block">
+                                                                <?php echo htmlspecialchars($second['teacher_name']); ?>
+                                                            </small>
+                                                            <?php if ($second['subject_code']): ?>
+                                                                <small class="text-muted">(<?php echo htmlspecialchars($second['subject_code']); ?>)</small>
+                                                            <?php endif; ?>
+                                                        <?php else: ?>
+                                                            <span class="text-muted">Free</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <?php
+                                                    $p += 2;
+                                                    continue;
+                                                }
+                                                // else fall through and render single cell
+                                            }
+
+                                            // Single period cell
                                             ?>
                                             <td class="<?php echo $cellClass; ?>"
                                                 <?php if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']): ?>
@@ -167,7 +279,8 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                                                     data-subject-id="<?php echo $slot['subject_id']; ?>"
                                                     data-teacher-id="<?php echo $slot['teacher_id']; ?>"
                                                     data-is-double="<?php echo $isDouble ? '1' : '0'; ?>"
-                                                <?php endif; ?>>
+                                                <?php endif; ?>
+                                                >
                                                 <?php if ($isBreak): ?>
                                                     <strong>BREAK</strong>
                                                 <?php elseif ($isSpecial): ?>
@@ -175,9 +288,6 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                                                 <?php elseif ($slot && $slot['subject_id']): ?>
                                                     <div class="fw-bold">
                                                         <?php echo htmlspecialchars($slot['subject_name']); ?>
-                                                        <?php if ($isDouble): ?>
-                                                            <span class="badge bg-info ms-1">Double</span>
-                                                        <?php endif; ?>
                                                     </div>
                                                     <small class="text-muted d-block">
                                                         <?php echo htmlspecialchars($slot['teacher_name']); ?>
@@ -189,7 +299,10 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                                                     <span class="text-muted">Free</span>
                                                 <?php endif; ?>
                                             </td>
-                                        <?php endfor; ?>
+                                            <?php
+                                            $p++;
+                                        }
+                                        ?>
                                     </tr>
                                 <?php endfor; ?>
                             </tbody>

@@ -29,3 +29,13 @@
 - [ ] Excel export functionality
 - [ ] Print-ready formats
 - [ ] Testing and optimization
+
+## Local reminders (from assistant)
+- [ ] Implement assignment-accurate timetable generator (scripts/generate_timetable.php) — create PHP CLI that reads `subject_assignments` and writes conflict-aware `timetables` (not-started)
+- [ ] Add integrity check script (scripts/check_integrity.php) — verify foreign keys and detect teacher double-bookings (not-started)
+- [ ] Remind user about timetable generator — user asked to be reminded later; ask when to remind or schedule (not-started)
+
+> Notes:
+> - The repo already contains a synthetic seed in `sql/initial_data.sql` which fills many tables for UI/testing.
+> - The generator would produce more realistic timetables by respecting `periods_per_week` from `subject_assignments` and avoiding teacher conflicts.
+> - If you want any of these items done now, tell me which one and whether you want the script to write directly to the DB or output SQL.

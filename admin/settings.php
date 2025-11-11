@@ -46,6 +46,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
 
+        case 'update_break':
+            $id = intval($_POST['id']);
+            $name = sanitize($_POST['name']);
+            $periodNumber = intval($_POST['period_number']);
+            $duration = intval($_POST['duration']);
+
+            $db = getDB();
+            $stmt = $db->prepare("UPDATE break_periods SET name = ?, period_number = ?, duration_minutes = ? WHERE id = ?");
+            if ($stmt->execute([$name, $periodNumber, $duration, $id])) {
+                showAlert('Break period updated successfully', 'success');
+            } else {
+                showAlert('Error updating break period', 'danger');
+            }
+            break;
+
         case 'delete_break':
             $id = intval($_POST['id']);
             if (deleteBreakPeriod($id)) {
@@ -228,13 +243,23 @@ $specialPeriods = getAllSpecialPeriods();
                                         (<?php echo $break['duration_minutes']; ?> minutes)
                                     </small>
                                 </div>
-                                <form method="POST" class="d-inline" onsubmit="return confirmDelete()">
-                                    <input type="hidden" name="action" value="delete_break">
-                                    <input type="hidden" name="id" value="<?php echo $break['id']; ?>">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                        <i class="bi bi-trash"></i>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" 
+                                            data-bs-target="#editBreakModal"
+                                            data-id="<?php echo $break['id']; ?>"
+                                            data-name="<?php echo htmlspecialchars($break['name']); ?>"
+                                            data-period="<?php echo $break['period_number']; ?>"
+                                            data-duration="<?php echo $break['duration_minutes']; ?>">
+                                        <i class="bi bi-pencil"></i>
                                     </button>
-                                </form>
+                                    <form method="POST" class="d-inline" onsubmit="return confirmDelete()">
+                                        <input type="hidden" name="action" value="delete_break">
+                                        <input type="hidden" name="id" value="<?php echo $break['id']; ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -322,6 +347,42 @@ $specialPeriods = getAllSpecialPeriods();
     </div>
 </div>
 
+<!-- Edit Break Modal -->
+<div class="modal fade" id="editBreakModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Break Period</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="update_break">
+                    <input type="hidden" name="id" id="editBreakId" value="">
+                    <div class="mb-3">
+                        <label for="editBreakName" class="form-label">Break Name *</label>
+                        <input type="text" class="form-control" id="editBreakName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editBreakPeriod" class="form-label">After Period Number *</label>
+                        <input type="number" class="form-control" id="editBreakPeriod" name="period_number"
+                               min="1" max="12" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editBreakDuration" class="form-label">Duration (minutes) *</label>
+                        <input type="number" class="form-control" id="editBreakDuration" name="duration"
+                               min="5" max="60" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Break</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Add Special Period Modal -->
 <div class="modal fade" id="addSpecialModal" tabindex="-1">
     <div class="modal-dialog">
@@ -372,5 +433,23 @@ $specialPeriods = getAllSpecialPeriods();
         </div>
     </div>
 </div>
+
+<script>
+// Handle edit break modal population
+document.getElementById('editBreakModal')?.addEventListener('show.bs.modal', function(event) {
+    const button = event.relatedTarget;
+    if (button) {
+        document.getElementById('editBreakId').value = button.getAttribute('data-id');
+        document.getElementById('editBreakName').value = button.getAttribute('data-name');
+        document.getElementById('editBreakPeriod').value = button.getAttribute('data-period');
+        document.getElementById('editBreakDuration').value = button.getAttribute('data-duration');
+    }
+});
+
+// Confirm delete action
+function confirmDelete() {
+    return confirm('Are you sure you want to delete this item?');
+}
+</script>
 
 <?php require_once '../includes/footer.php'; ?>

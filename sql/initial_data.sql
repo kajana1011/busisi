@@ -178,4 +178,160 @@ INSERT INTO `special_periods` (`name`, `day_of_week`, `start_period`, `end_perio
 -- INSERT INTO `generation_history` (`generated_at`, `generated_by`, `status`, `notes`) VALUES
 -- (NOW(), 1, 'success', 'Initial timetable generation');
 
+-- NOTE: The admin password must be a bcrypt hash. You can either
+-- 1) run `php adminseed.php` from the project root to create the default admin (recommended),
+-- 2) or replace the placeholder hash below with a bcrypt hash generated on your machine.
+-- Example default credentials: username: admin | password: admin123
+
+-- Insert default admin (replace the password hash with a valid bcrypt hash or run adminseed.php)
+INSERT INTO `admins` (`username`, `password`, `email`) VALUES
+('admin', '$2y$10$PLACEHOLDER_BCRYPT_HASH_REPLACE_ME_BY_RUNNING_adminseed.php', 'admin@busisi.com');
+
+-- Insert some sample timetable entries for a couple of streams (simple example)
+INSERT INTO `timetables` (`stream_id`, `day_of_week`, `period_number`, `subject_id`, `teacher_id`, `is_break`, `is_special`, `is_double_period`, `special_period_id`) VALUES
+(1, 1, 1, 1, 1, 0, 0, 0, NULL), -- Form1 A - Period 1 - Mathematics
+(1, 1, 2, 2, 2, 0, 0, 0, NULL), -- Form1 A - Period 2 - English
+(1, 1, 3, NULL, NULL, 1, 0, 0, NULL), -- Form1 A - Period 3 - Short Break
+(1, 1, 4, 3, 3, 0, 0, 0, NULL), -- Form1 A - Period 4 - Kiswahili
+(2, 1, 1, 1, 1, 0, 0, 0, NULL), -- Form1 B - Period 1 - Mathematics
+(2, 1, 2, 2, 2, 0, 0, 0, NULL), -- Form1 B - Period 2 - English
+(2, 1, 3, NULL, NULL, 1, 0, 0, NULL); -- Form1 B - Period 3 - Short Break
+
+-- Insert a sample generation history entry (generated_by left NULL until admin exists)
+INSERT INTO `generation_history` (`generated_at`, `generated_by`, `status`, `notes`) VALUES
+(NOW(), NULL, 'success', 'Initial seed - sample generation history');
+
+-- ------------------------------------------------------------------
+-- Additional sample data for testing
+-- 1) Add more teachers (T011-T020)
+-- 2) Populate timetables for streams 1-4 (full week) and streams 5-8 (partial)
+-- 3) Add a couple of generation_history entries referencing admin id 1
+-- ------------------------------------------------------------------
+
+-- Additional teachers
+INSERT INTO `teachers` (`first_name`, `last_name`, `email`, `phone`, `employee_id`) VALUES
+('Grace', 'Lee', 'grace.lee@busisi.edu.ke', '+254 700 111 212', 'T011'),
+('Samuel', 'Njoroge', 'samuel.njoroge@busisi.edu.ke', '+254 700 111 313', 'T012'),
+('Anne', 'Karanja', 'anne.karanja@busisi.edu.ke', '+254 700 111 414', 'T013'),
+('Paul', 'Otieno', 'paul.otieno@busisi.edu.ke', '+254 700 111 515', 'T014'),
+('Cynthia', 'Wambui', 'cynthia.wambui@busisi.edu.ke', '+254 700 111 616', 'T015'),
+('Peter', 'Mumo', 'peter.mumo@busisi.edu.ke', '+254 700 111 717', 'T016'),
+('Linda', 'Kibet', 'linda.kibet@busisi.edu.ke', '+254 700 111 818', 'T017'),
+('Kevin', 'Mbae', 'kevin.mbae@busisi.edu.ke', '+254 700 111 919', 'T018'),
+('Nancy', 'Maina', 'nancy.maina@busisi.edu.ke', '+254 700 112 020', 'T019'),
+('Frank', 'Wangari', 'frank.wangari@busisi.edu.ke', '+254 700 112 121', 'T020');
+
+-- Programmatic timetable population.
+-- Streams 1-4: full week (Monday-Friday) with 8 periods/day.
+-- Streams 5-8: sample for Monday and Wednesday only.
+-- Rules used:
+--  - Breaks at period 3 and 5 => subject_id, teacher_id = NULL and is_break=1
+--  - Special periods: Assembly (day1,period1)->special_period_id=1,
+--                     Sports (day3,period8)->special_period_id=2,
+--                     Guidance (day5,period7)->special_period_id=3
+--  - For non-break periods subject_id is derived so it references existing subjects (1..15)
+--  - teacher_id derived from subject_id to reference existing teachers (1..20)
+
+INSERT INTO `timetables` (
+	`stream_id`, `day_of_week`, `period_number`, `subject_id`, `teacher_id`, `is_break`, `is_special`, `is_double_period`, `special_period_id`
+)
+SELECT s.stream_id, d.day, p.period,
+	CASE WHEN p.period IN (3,5) THEN NULL ELSE ((s.stream_id + d.day + p.period) % 15) + 1 END AS subject_id,
+	CASE WHEN p.period IN (3,5) THEN NULL ELSE ((((s.stream_id + d.day + p.period) % 15) + 1 - 1) % 20) + 1 END AS teacher_id,
+	IF(p.period IN (3,5), 1, 0) AS is_break,
+	CASE WHEN (d.day = 1 AND p.period = 1) OR (d.day = 3 AND p.period = 8) OR (d.day = 5 AND p.period = 7) THEN 1 ELSE 0 END AS is_special,
+	0 AS is_double_period,
+	CASE WHEN (d.day = 1 AND p.period = 1) THEN 1 WHEN (d.day = 3 AND p.period = 8) THEN 2 WHEN (d.day = 5 AND p.period = 7) THEN 3 ELSE NULL END AS special_period_id
+FROM (SELECT 1 AS stream_id UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4) s
+CROSS JOIN (SELECT 1 AS day UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5) d
+CROSS JOIN (SELECT 1 AS period UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8) p;
+
+-- Partial timetable for streams 5-8 (Monday and Wednesday only)
+INSERT INTO `timetables` (
+	`stream_id`, `day_of_week`, `period_number`, `subject_id`, `teacher_id`, `is_break`, `is_special`, `is_double_period`, `special_period_id`
+)
+SELECT s.stream_id, d.day, p.period,
+	CASE WHEN p.period IN (3,5) THEN NULL ELSE ((s.stream_id + d.day + p.period) % 15) + 1 END AS subject_id,
+	CASE WHEN p.period IN (3,5) THEN NULL ELSE ((((s.stream_id + d.day + p.period) % 15) + 1 - 1) % 20) + 1 END AS teacher_id,
+	IF(p.period IN (3,5), 1, 0) AS is_break,
+	CASE WHEN (d.day = 1 AND p.period = 1) OR (d.day = 3 AND p.period = 8) OR (d.day = 5 AND p.period = 7) THEN 1 ELSE 0 END AS is_special,
+	0 AS is_double_period,
+	CASE WHEN (d.day = 1 AND p.period = 1) THEN 1 WHEN (d.day = 3 AND p.period = 8) THEN 2 WHEN (d.day = 5 AND p.period = 7) THEN 3 ELSE NULL END AS special_period_id
+FROM (SELECT 5 AS stream_id UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8) s
+CROSS JOIN (SELECT 1 AS day UNION ALL SELECT 3) d
+CROSS JOIN (SELECT 1 AS period UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8) p;
+
+-- Add a couple of generation history rows (assumes admin with id=1 exists)
+INSERT INTO `generation_history` (`generated_at`, `generated_by`, `status`, `notes`) VALUES
+(NOW(), 1, 'success', 'Auto-generated sample timetables (streams 1-4 full week)'),
+(NOW(), 1, 'success', 'Auto-generated sample timetables (streams 5-8 partial)');
+
+-- ------------------------------------------------------------------
+-- Extra subject_assignments to increase dataset density
+-- Use INSERT IGNORE so re-running the seed won't fail on duplicates
+-- Assign subjects 11-15 (Computer Studies, Agriculture, Home Science, Art, Music)
+-- to streams 1-8 using teachers T011-T020 with reasonable periods_per_week
+-- ------------------------------------------------------------------
+
+INSERT IGNORE INTO `subject_assignments` (`stream_id`, `subject_id`, `teacher_id`, `periods_per_week`) VALUES
+-- For Form 1 streams (1,2)
+(1, 11, 11, 2),
+(1, 12, 12, 1),
+(1, 13, 13, 1),
+(1, 14, 14, 1),
+(1, 15, 15, 1),
+(2, 11, 11, 2),
+(2, 12, 12, 1),
+(2, 13, 13, 1),
+(2, 14, 14, 1),
+(2, 15, 15, 1),
+
+-- For Form 2 streams (3,4)
+(3, 11, 16, 2),
+(3, 12, 17, 1),
+(3, 13, 18, 1),
+(3, 14, 19, 1),
+(3, 15, 20, 1),
+(4, 11, 16, 2),
+(4, 12, 17, 1),
+(4, 13, 18, 1),
+(4, 14, 19, 1),
+(4, 15, 20, 1),
+
+-- For Form 3 streams (5,6)
+(5, 11, 11, 3),
+(5, 12, 12, 2),
+(5, 13, 13, 2),
+(5, 14, 14, 2),
+(5, 15, 15, 1),
+(6, 11, 16, 2),
+(6, 12, 17, 2),
+(6, 13, 18, 2),
+(6, 14, 19, 2),
+(6, 15, 20, 1),
+
+-- For Form 4 streams (7,8)
+(7, 11, 11, 3),
+(7, 12, 12, 2),
+(7, 13, 13, 2),
+(7, 14, 14, 2),
+(7, 15, 15, 1),
+(8, 11, 16, 3),
+(8, 12, 17, 2),
+(8, 13, 18, 2),
+(8, 14, 19, 2),
+(8, 15, 20, 1);
+
+-- Add one more special period for variety
+INSERT IGNORE INTO `special_periods` (`name`, `day_of_week`, `start_period`, `end_period`, `is_active`) VALUES
+('Staff Meeting', 4, 2, 2, 1); -- Thursday, period 2
+
+-- Extra generation history rows for testing
+INSERT INTO `generation_history` (`generated_at`, `generated_by`, `status`, `notes`) VALUES
+(NOW() - INTERVAL 10 DAY, 1, 'success', 'Sample generation 10 days ago'),
+(NOW() - INTERVAL 7 DAY, 1, 'success', 'Sample generation 7 days ago'),
+(NOW() - INTERVAL 3 DAY, 1, 'failed', 'Sample failed generation 3 days ago'),
+(NOW() - INTERVAL 2 DAY, 1, 'partial', 'Sample partial generation 2 days ago'),
+(NOW() - INTERVAL 1 DAY, 1, 'success', 'Sample generation yesterday');
+
 
