@@ -9,6 +9,51 @@ $pageTitle = 'Settings - Busisi Timetable Generator';
 $showNav = true;
 $isAdmin = true;
 
+$db = getDB();
+
+// Helper function to calculate adjusted period_number for breaks
+// User enters logical period (e.g., "after period 4" means after 4 teaching periods)
+// DB stores actual slot number accounting for previously-placed breaks
+function calculateAdjustedBreakPeriod($userInputPeriod, $excludeBreakId = null) {
+    global $db;
+    
+    // Get all breaks with period_number < adjusted target, ordered by period_number
+    $stmt = $db->prepare("SELECT id, period_number FROM break_periods ORDER BY period_number");
+    $stmt->execute();
+    $existingBreaks = $stmt->fetchAll();
+    
+    // Count how many breaks come before this one (based on user input)
+    $priorBreakCount = 0;
+    foreach ($existingBreaks as $b) {
+        if ($excludeBreakId && $b['id'] == $excludeBreakId) {
+            continue; // Skip the break being edited
+        }
+        // Calculate the user-facing period for this existing break
+        // userFacing = actual_period - priorBreakCount - 1
+        // So we reverse: for a given actual_period, we count how many breaks are truly before it
+        if ($b['period_number'] - $priorBreakCount - 1 < $userInputPeriod) {
+            $priorBreakCount++;
+        }
+    }
+    
+    // Adjusted period = user input + prior breaks + 1
+    return $userInputPeriod + $priorBreakCount + 1;
+}
+
+// Helper function to reverse-calculate user-facing period from DB period_number
+function getUserFacingBreakPeriod($dbPeriodNumber) {
+    global $db;
+    
+    // Count how many breaks have period_number < this one
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM break_periods WHERE period_number < ?");
+    $stmt->execute([$dbPeriodNumber]);
+    $result = $stmt->fetch();
+    $priorBreakCount = $result['count'] ?? 0;
+    
+    // User-facing period = DB period - prior breaks - 1
+    return $dbPeriodNumber - $priorBreakCount - 1;
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -36,10 +81,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'add_break':
             $name = sanitize($_POST['name']);
-            $periodNumber = intval($_POST['period_number']);
+            $userInputPeriod = intval($_POST['period_number']);
             $duration = intval($_POST['duration']);
 
-            if (createBreakPeriod($name, $periodNumber, $duration)) {
+            // Calculate adjusted period_number accounting for existing breaks
+            $adjustedPeriodNumber = calculateAdjustedBreakPeriod($userInputPeriod);
+
+            if (createBreakPeriod($name, $adjustedPeriodNumber, $duration)) {
                 showAlert('Break period added successfully', 'success');
             } else {
                 showAlert('Error adding break period', 'danger');
@@ -49,12 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'update_break':
             $id = intval($_POST['id']);
             $name = sanitize($_POST['name']);
-            $periodNumber = intval($_POST['period_number']);
+            $userInputPeriod = intval($_POST['period_number']);
             $duration = intval($_POST['duration']);
 
-            $db = getDB();
+            // Calculate adjusted period_number accounting for other breaks (exclude this one)
+            $adjustedPeriodNumber = calculateAdjustedBreakPeriod($userInputPeriod, $id);
+
             $stmt = $db->prepare("UPDATE break_periods SET name = ?, period_number = ?, duration_minutes = ? WHERE id = ?");
-            if ($stmt->execute([$name, $periodNumber, $duration, $id])) {
+            if ($stmt->execute([$name, $adjustedPeriodNumber, $duration, $id])) {
                 showAlert('Break period updated successfully', 'success');
             } else {
                 showAlert('Error updating break period', 'danger');
@@ -233,14 +283,15 @@ $specialPeriods = getAllSpecialPeriods();
                     <p class="text-muted mb-0">No break periods configured.</p>
                 <?php else: ?>
                     <div class="list-group">
-                        <?php foreach ($breakPeriods as $break): ?>
+                        <?php foreach ($breakPeriods as $break): 
+                            $userFacingPeriod = getUserFacingBreakPeriod($break['period_number']);
+                        ?>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
                                     <strong><?php echo htmlspecialchars($break['name']); ?></strong>
                                     <br>
                                     <small class="text-muted">
-                                        After Period <?php echo $break['period_number']; ?>
-                                        (<?php echo $break['duration_minutes']; ?> minutes)
+                                        After Period <?php echo $userFacingPeriod; ?> (<?php echo $break['duration_minutes']; ?> minutes)
                                     </small>
                                 </div>
                                 <div class="d-flex gap-2">
@@ -248,7 +299,7 @@ $specialPeriods = getAllSpecialPeriods();
                                             data-bs-target="#editBreakModal"
                                             data-id="<?php echo $break['id']; ?>"
                                             data-name="<?php echo htmlspecialchars($break['name']); ?>"
-                                            data-period="<?php echo $break['period_number']; ?>"
+                                            data-period="<?php echo $userFacingPeriod; ?>"
                                             data-duration="<?php echo $break['duration_minutes']; ?>">
                                         <i class="bi bi-pencil"></i>
                                     </button>
@@ -328,7 +379,7 @@ $specialPeriods = getAllSpecialPeriods();
                                placeholder="e.g., Short Break, Lunch Break" required>
                     </div>
                     <div class="mb-3">
-                        <label for="breakPeriod" class="form-label">After Period Number *</label>
+                        <label for="breakPeriod" class="form-label">After Period Number * <small class="text-muted">(teaching periods)</small></label>
                         <input type="number" class="form-control" id="breakPeriod" name="period_number"
                                min="1" max="12" required>
                     </div>
@@ -364,7 +415,7 @@ $specialPeriods = getAllSpecialPeriods();
                         <input type="text" class="form-control" id="editBreakName" name="name" required>
                     </div>
                     <div class="mb-3">
-                        <label for="editBreakPeriod" class="form-label">After Period Number *</label>
+                        <label for="editBreakPeriod" class="form-label">After Period Number * <small class="text-muted">(teaching periods)</small></label>
                         <input type="number" class="form-control" id="editBreakPeriod" name="period_number"
                                min="1" max="12" required>
                     </div>
