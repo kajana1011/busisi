@@ -123,13 +123,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'add_special':
             $name = sanitize($_POST['name']);
             $day = intval($_POST['day_of_week']);
-            $startPeriod = intval($_POST['start_period']);
-            $endPeriod = intval($_POST['end_period']);
+            $startTime = sanitize($_POST['start_time']); // HH:MM format
+            $endTime = sanitize($_POST['end_time']);     // HH:MM format
+
+            // Convert times to period numbers
+            $periodData = calculatePeriodsFromTime($startTime, $endTime, $day);
+            $startPeriod = $periodData['start_period'];
+            $endPeriod = $periodData['end_period'];
 
             if (createSpecialPeriod($name, $day, $startPeriod, $endPeriod)) {
                 showAlert('Special period added successfully', 'success');
             } else {
                 showAlert('Error adding special period', 'danger');
+            }
+            break;
+
+        case 'update_special':
+            $id = intval($_POST['id']);
+            $name = sanitize($_POST['name']);
+            $day = intval($_POST['day_of_week']);
+            $startTime = sanitize($_POST['start_time']); // HH:MM format
+            $endTime = sanitize($_POST['end_time']);     // HH:MM format
+
+            // Convert times to period numbers
+            $periodData = calculatePeriodsFromTime($startTime, $endTime, $day);
+            $startPeriod = $periodData['start_period'];
+            $endPeriod = $periodData['end_period'];
+
+            if (updateSpecialPeriod($id, $name, $day, $startPeriod, $endPeriod)) {
+                showAlert('Special period updated successfully', 'success');
+            } else {
+                showAlert('Error updating special period', 'danger');
             }
             break;
 
@@ -336,23 +360,66 @@ $specialPeriods = getAllSpecialPeriods();
                     <p class="text-muted mb-0">No special periods configured.</p>
                 <?php else: ?>
                     <div class="list-group">
-                        <?php foreach ($specialPeriods as $special): ?>
+                        <?php foreach ($specialPeriods as $special):
+                            // Build exact timeline for the day to compute period start/end times (accounts for breaks)
+                            $schoolStartTime = getSetting('school_start_time', '08:00');
+                            $periodDuration = intval(getSetting('period_duration', '40'));
+                            $periodsPerDay = intval(getSetting('periods_per_day', '8'));
+                            $schoolStartMinutes = timeToMinutes($schoolStartTime);
+
+                            $breaks = getAllBreakPeriods();
+                            $breaksByAfter = [];
+                            foreach ($breaks as $b) {
+                                $after = intval($b['period_number']);
+                                if (!isset($breaksByAfter[$after])) $breaksByAfter[$after] = 0;
+                                $breaksByAfter[$after] += intval($b['duration_minutes']);
+                            }
+
+                            $timeline = [];
+                            $currentMinutes = $schoolStartMinutes;
+                            for ($p = 1; $p <= $periodsPerDay; $p++) {
+                                $ps = $currentMinutes;
+                                $pe = $ps + $periodDuration;
+                                $timeline[$p] = ['start' => $ps, 'end' => $pe];
+                                $currentMinutes = $pe;
+                                if (isset($breaksByAfter[$p])) {
+                                    $currentMinutes += $breaksByAfter[$p];
+                                }
+                            }
+
+                            $startPeriodIdx = max(1, intval($special['start_period']));
+                            $endPeriodIdx = min($periodsPerDay, intval($special['end_period']));
+                            $startTimeStr = minutesToTime($timeline[$startPeriodIdx]['start']);
+                            $endTimeStr = minutesToTime($timeline[$endPeriodIdx]['end']);
+                        ?>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
                                     <strong><?php echo htmlspecialchars($special['name']); ?></strong>
                                     <br>
                                     <small class="text-muted">
-                                        <?php echo getDayName($special['day_of_week']); ?>:
-                                        Periods <?php echo $special['start_period']; ?>-<?php echo $special['end_period']; ?>
+                                        <?php echo getDayName($special['day_of_week']); ?>: 
+                                        <?php echo $startTimeStr; ?> - <?php echo $endTimeStr; ?> 
+                                        <span class="badge bg-info"><?php echo "Periods " . $special['start_period'] . "-" . $special['end_period']; ?></span>
                                     </small>
                                 </div>
-                                <form method="POST" class="d-inline" onsubmit="return confirmDelete()">
-                                    <input type="hidden" name="action" value="delete_special">
-                                    <input type="hidden" name="id" value="<?php echo $special['id']; ?>">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                        <i class="bi bi-trash"></i>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" 
+                                            data-bs-target="#editSpecialModal"
+                                            data-id="<?php echo $special['id']; ?>"
+                                            data-name="<?php echo htmlspecialchars($special['name']); ?>"
+                                            data-day="<?php echo $special['day_of_week']; ?>"
+                                            data-start-time="<?php echo $startTimeStr; ?>"
+                                            data-end-time="<?php echo $endTimeStr; ?>">
+                                        <i class="bi bi-pencil"></i>
                                     </button>
-                                </form>
+                                    <form method="POST" class="d-inline" onsubmit="return confirmDelete()">
+                                        <input type="hidden" name="action" value="delete_special">
+                                        <input type="hidden" name="id" value="<?php echo $special['id']; ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -459,21 +526,20 @@ $specialPeriods = getAllSpecialPeriods();
                             <option value="3">Wednesday</option>
                             <option value="4">Thursday</option>
                             <option value="5">Friday</option>
-                            <option value="6">Saturday</option>
-                            <option value="7">Sunday</option>
                         </select>
                     </div>
                     <div class="row">
                         <div class="col-6 mb-3">
-                            <label for="specialStart" class="form-label">Start Period *</label>
-                            <input type="number" class="form-control" id="specialStart" name="start_period"
-                                   min="1" max="12" required>
+                            <label for="specialStartTime" class="form-label">Start Time * <small class="text-muted">(HH:MM)</small></label>
+                            <input type="time" class="form-control" id="specialStartTime" name="start_time" required>
                         </div>
                         <div class="col-6 mb-3">
-                            <label for="specialEnd" class="form-label">End Period *</label>
-                            <input type="number" class="form-control" id="specialEnd" name="end_period"
-                                   min="1" max="12" required>
+                            <label for="specialEndTime" class="form-label">End Time * <small class="text-muted">(HH:MM)</small></label>
+                            <input type="time" class="form-control" id="specialEndTime" name="end_time" required>
                         </div>
+                    </div>
+                    <div class="alert alert-info small">
+                        <strong>Note:</strong> The system will automatically calculate which periods this time range covers, accounting for breaks.
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -485,7 +551,69 @@ $specialPeriods = getAllSpecialPeriods();
     </div>
 </div>
 
+<!-- Edit Special Period Modal -->
+<div class="modal fade" id="editSpecialModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Special Period</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="update_special">
+                    <input type="hidden" name="id" id="editSpecialId" value="">
+                    <div class="mb-3">
+                        <label for="editSpecialName" class="form-label">Period Name *</label>
+                        <input type="text" class="form-control" id="editSpecialName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editSpecialDay" class="form-label">Day of Week *</label>
+                        <select class="form-select" id="editSpecialDay" name="day_of_week" required>
+                            <option value="">Select Day</option>
+                            <option value="1">Monday</option>
+                            <option value="2">Tuesday</option>
+                            <option value="3">Wednesday</option>
+                            <option value="4">Thursday</option>
+                            <option value="5">Friday</option>
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label for="editSpecialStartTime" class="form-label">Start Time * <small class="text-muted">(HH:MM)</small></label>
+                            <input type="time" class="form-control" id="editSpecialStartTime" name="start_time" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label for="editSpecialEndTime" class="form-label">End Time * <small class="text-muted">(HH:MM)</small></label>
+                            <input type="time" class="form-control" id="editSpecialEndTime" name="end_time" required>
+                        </div>
+                    </div>
+                    <div class="alert alert-info small">
+                        <strong>Note:</strong> The system will automatically calculate which periods this time range covers, accounting for breaks.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Special Period</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+// Handle edit special period modal population
+document.getElementById('editSpecialModal')?.addEventListener('show.bs.modal', function(event) {
+    const button = event.relatedTarget;
+    if (button) {
+        document.getElementById('editSpecialId').value = button.getAttribute('data-id');
+        document.getElementById('editSpecialName').value = button.getAttribute('data-name');
+        document.getElementById('editSpecialDay').value = button.getAttribute('data-day');
+        document.getElementById('editSpecialStartTime').value = button.getAttribute('data-start-time');
+        document.getElementById('editSpecialEndTime').value = button.getAttribute('data-end-time');
+    }
+});
+
 // Handle edit break modal population
 document.getElementById('editBreakModal')?.addEventListener('show.bs.modal', function(event) {
     const button = event.relatedTarget;

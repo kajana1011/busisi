@@ -11,11 +11,17 @@ document.addEventListener('DOMContentLoaded', function() {
  * Initialize drag and drop functionality for timetable cells
  */
 function initializeDragAndDrop() {
-    const cells = document.querySelectorAll('.timetable-cell.draggable');
+    const draggableCells = document.querySelectorAll('.timetable-cell.draggable');
+    const allCells = document.querySelectorAll('.timetable-cell');
 
-    cells.forEach(cell => {
+    // Attach dragstart/end only to draggable cells
+    draggableCells.forEach(cell => {
         cell.addEventListener('dragstart', handleDragStart);
         cell.addEventListener('dragend', handleDragEnd);
+    });
+
+    // Attach drop-related handlers to all cells so free slots are valid drop targets
+    allCells.forEach(cell => {
         cell.addEventListener('dragover', handleDragOver);
         cell.addEventListener('drop', handleDrop);
         cell.addEventListener('dragenter', handleDragEnter);
@@ -96,7 +102,8 @@ function handleDrop(e) {
     }
 
     if (this !== draggedElement && !this.classList.contains('period-break')) {
-        const targetData = {
+        // Build target data from this cell
+        const target = {
             streamId: this.dataset.streamId,
             day: this.dataset.day,
             period: this.dataset.period,
@@ -104,6 +111,41 @@ function handleDrop(e) {
             teacherId: this.dataset.teacherId,
             isDouble: this.dataset.isDouble
         };
+
+        // If dragging a double (first half), attempt a double move
+        if (draggedData && draggedData.isDouble === '1') {
+            // Determine target second slot
+            const targetPeriod = parseInt(target.period, 10);
+            const targetNextPeriod = targetPeriod + 1;
+            const targetNextCell = document.querySelector(`.timetable-cell[data-stream-id="${target.streamId}"][data-day="${target.day}"][data-period="${targetNextPeriod}"]`);
+
+            if (!targetNextCell || targetNextCell.classList.contains('period-break')) {
+                alert('Cannot move a double period here because there is no consecutive free slot.');
+                return false;
+            }
+
+            // Build targetData with span=2
+            const targetData = Object.assign({}, target, { span: 2 });
+
+            // Also build source data with span=2
+            const sourceData = Object.assign({}, draggedData, { span: 2 });
+
+            // Check for conflicts across both slots
+            checkConflict(sourceData, targetData).then(hasConflict => {
+                if (hasConflict) {
+                    if (confirm('This swap will cause a conflict. Do you want to proceed anyway?')) {
+                        swapPeriods(sourceData, targetData);
+                    }
+                } else {
+                    swapPeriods(sourceData, targetData);
+                }
+            });
+
+            return false;
+        }
+
+        // Normal single-slot swap
+        const targetData = target;
 
         // Check for conflicts
         checkConflict(draggedData, targetData).then(hasConflict => {
@@ -124,14 +166,24 @@ function handleDrop(e) {
  * Highlight valid drop zones
  */
 function highlightValidDropZones(data) {
-    const cells = document.querySelectorAll('.timetable-cell.draggable');
+    const cells = document.querySelectorAll('.timetable-cell');
 
     cells.forEach(cell => {
-        if (cell.dataset.streamId === data.streamId &&
-            !cell.classList.contains('period-break') &&
-            cell !== draggedElement) {
-            cell.classList.add('drop-zone');
+        // skip breaks and the dragged element itself
+        if (cell === draggedElement || cell.classList.contains('period-break')) return;
+
+        // only same stream
+        if (cell.dataset.streamId !== data.streamId) return;
+
+        // If dragging a double, ensure there's a consecutive slot available
+        if (data && data.isDouble === '1') {
+            const period = parseInt(cell.dataset.period, 10);
+            const nextCell = document.querySelector(`.timetable-cell[data-stream-id="${cell.dataset.streamId}"][data-day="${cell.dataset.day}"][data-period="${period + 1}"]`);
+            if (!nextCell) return;
+            if (nextCell.classList.contains('period-break')) return;
         }
+
+        cell.classList.add('drop-zone');
     });
 }
 

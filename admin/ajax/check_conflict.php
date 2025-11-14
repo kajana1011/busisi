@@ -21,33 +21,53 @@ $db = getDB();
 // Check if the swap would cause a teacher conflict
 $hasConflict = false;
 
-// Get teacher IDs
-$sourceTeacherId = $source['teacherId'] ?? null;
-$targetTeacherId = $target['teacherId'] ?? null;
+// Support single-slot swaps and multi-slot (span) swaps
+$sourceSpan = isset($source['span']) ? intval($source['span']) : 1;
+$targetSpan = isset($target['span']) ? intval($target['span']) : 1;
 
-if ($sourceTeacherId && $targetTeacherId) {
-    // Check if source teacher is already teaching at target time
-    $stmt = $db->prepare("SELECT COUNT(*) FROM timetables
-                          WHERE teacher_id = ?
-                          AND day_of_week = ?
-                          AND period_number = ?
-                          AND stream_id != ?");
-    $stmt->execute([$sourceTeacherId, $target['day'], $target['period'], $source['streamId']]);
+// Fetch teacher ids for source range from DB (more reliable than trusting client data)
+$sourceTeacherIds = [];
+for ($i = 0; $i < $sourceSpan; $i++) {
+    $p = intval($source['period']) + $i;
+    $stmt = $db->prepare("SELECT teacher_id FROM timetables WHERE stream_id = ? AND day_of_week = ? AND period_number = ?");
+    $stmt->execute([$source['streamId'], $source['day'], $p]);
+    $row = $stmt->fetch();
+    $sourceTeacherIds[] = $row ? $row['teacher_id'] : null;
+}
 
-    if ($stmt->fetchColumn() > 0) {
-        $hasConflict = true;
+// Fetch teacher ids for target range
+$targetTeacherIds = [];
+for ($i = 0; $i < $targetSpan; $i++) {
+    $p = intval($target['period']) + $i;
+    $stmt = $db->prepare("SELECT teacher_id FROM timetables WHERE stream_id = ? AND day_of_week = ? AND period_number = ?");
+    $stmt->execute([$target['streamId'], $target['day'], $p]);
+    $row = $stmt->fetch();
+    $targetTeacherIds[] = $row ? $row['teacher_id'] : null;
+}
+
+// Now check for conflicts: for each source teacher, ensure they are not scheduled at the corresponding target slot in other streams
+for ($i = 0; $i < max($sourceSpan, $targetSpan); $i++) {
+    $sTeacher = $sourceTeacherIds[$i] ?? null;
+    $tPeriod = intval($target['period']) + $i;
+    if ($sTeacher) {
+        $stmt = $db->prepare("SELECT COUNT(*) FROM timetables WHERE teacher_id = ? AND day_of_week = ? AND period_number = ? AND stream_id != ?");
+        $stmt->execute([$sTeacher, $target['day'], $tPeriod, $source['streamId']]);
+        if ($stmt->fetchColumn() > 0) {
+            $hasConflict = true;
+            break;
+        }
     }
 
-    // Check if target teacher is already teaching at source time
-    $stmt = $db->prepare("SELECT COUNT(*) FROM timetables
-                          WHERE teacher_id = ?
-                          AND day_of_week = ?
-                          AND period_number = ?
-                          AND stream_id != ?");
-    $stmt->execute([$targetTeacherId, $source['day'], $source['period'], $target['streamId']]);
-
-    if ($stmt->fetchColumn() > 0) {
-        $hasConflict = true;
+    // Check target teachers at source slots
+    $tTeacher = $targetTeacherIds[$i] ?? null;
+    $sPeriod = intval($source['period']) + $i;
+    if ($tTeacher) {
+        $stmt = $db->prepare("SELECT COUNT(*) FROM timetables WHERE teacher_id = ? AND day_of_week = ? AND period_number = ? AND stream_id != ?");
+        $stmt->execute([$tTeacher, $source['day'], $sPeriod, $target['streamId']]);
+        if ($stmt->fetchColumn() > 0) {
+            $hasConflict = true;
+            break;
+        }
     }
 }
 

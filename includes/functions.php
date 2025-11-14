@@ -526,3 +526,120 @@ function getAssignedStreamsForSubject($subjectId) {
 function isSetupCompleted() {
     return getSetting('setup_completed', '0') === '1';
 }
+
+/**
+ * Convert time string (HH:MM) to minutes from start of day
+ */
+function timeToMinutes($timeStr) {
+    if (!$timeStr) return 0;
+    list($hours, $minutes) = explode(':', $timeStr);
+    return intval($hours) * 60 + intval($minutes);
+}
+
+/**
+ * Convert minutes from start of day to time string (HH:MM)
+ */
+function minutesToTime($minutes) {
+    $hours = floor($minutes / 60);
+    $mins = $minutes % 60;
+    return sprintf("%02d:%02d", $hours, $mins);
+}
+
+/**
+ * Calculate period number from time, accounting for breaks
+ * Returns array with start_period, end_period, and message
+ */
+function calculatePeriodsFromTime($startTime, $endTime, $dayOfWeek = null) {
+    $db = getDB();
+    
+    // Get school settings
+    $schoolStartTime = getSetting('school_start_time', '08:00');
+    $periodDuration = intval(getSetting('period_duration', '40'));
+    $periodsPerDay = intval(getSetting('periods_per_day', '8'));
+    
+    // Convert times to minutes
+    $startMinutes = timeToMinutes($startTime);
+    $endMinutes = timeToMinutes($endTime);
+    $schoolStartMinutes = timeToMinutes($schoolStartTime);
+    
+    // Get all breaks ordered by period_number
+    $stmt = $db->query("SELECT * FROM break_periods ORDER BY period_number");
+    $breaks = $stmt->fetchAll();
+    
+    // Build an exact timeline of the teaching periods including break gaps.
+    $timeline = []; // period => ['start'=>minutes,'end'=>minutes]
+    $currentMinutes = $schoolStartMinutes;
+
+    // Map breaks by the period after which they occur
+    $breaksByAfter = [];
+    foreach ($breaks as $b) {
+        $after = intval($b['period_number']);
+        // if multiple breaks are defined for same slot, sum durations (defensive)
+        if (!isset($breaksByAfter[$after])) $breaksByAfter[$after] = 0;
+        $breaksByAfter[$after] += intval($b['duration_minutes']);
+    }
+
+    for ($p = 1; $p <= $periodsPerDay; $p++) {
+        $ps = $currentMinutes;
+        $pe = $ps + $periodDuration;
+        $timeline[$p] = ['start' => $ps, 'end' => $pe];
+
+        // advance
+        $currentMinutes = $pe;
+
+        // add break after this period if present
+        if (isset($breaksByAfter[$p])) {
+            $currentMinutes += $breaksByAfter[$p];
+        }
+    }
+
+    // Now determine which teaching periods overlap the requested [startMinutes, endMinutes)
+    $startPeriod = null;
+    $endPeriod = null;
+    for ($p = 1; $p <= $periodsPerDay; $p++) {
+        $ps = $timeline[$p]['start'];
+        $pe = $timeline[$p]['end'];
+
+        // overlap test
+        if (!($endMinutes <= $ps || $startMinutes >= $pe)) {
+            if ($startPeriod === null) $startPeriod = $p;
+            $endPeriod = $p;
+        }
+    }
+
+    // If selection doesn't overlap any teaching period (e.g., entirely inside a break or outside hours), snap to nearest
+    if ($startPeriod === null) {
+        for ($p = 1; $p <= $periodsPerDay; $p++) {
+            if ($timeline[$p]['end'] > $startMinutes) { $startPeriod = $p; break; }
+        }
+    }
+    if ($endPeriod === null) {
+        for ($p = $periodsPerDay; $p >= 1; $p--) {
+            if ($timeline[$p]['start'] < $endMinutes) { $endPeriod = $p; break; }
+        }
+    }
+
+    if ($startPeriod === null) $startPeriod = 1;
+    if ($endPeriod === null) $endPeriod = $periodsPerDay;
+    if ($endPeriod < $startPeriod) $endPeriod = $startPeriod;
+
+    $count = $endPeriod - $startPeriod + 1;
+    $message = sprintf("Periods %d to %d (%d %s)", $startPeriod, $endPeriod, $count, $count === 1 ? 'period' : 'periods');
+
+    return [
+        'start_period' => $startPeriod,
+        'end_period' => $endPeriod,
+        'period_count' => $count,
+        'message' => $message,
+        'timeline' => $timeline
+    ];
+}
+
+/**
+ * Update special period to use times instead of period numbers
+ */
+function updateSpecialPeriod($id, $name, $dayOfWeek, $startPeriod, $endPeriod) {
+    $db = getDB();
+    $stmt = $db->prepare("UPDATE special_periods SET name = ?, day_of_week = ?, start_period = ?, end_period = ? WHERE id = ?");
+    return $stmt->execute([$name, $dayOfWeek, $startPeriod, $endPeriod, $id]);
+}

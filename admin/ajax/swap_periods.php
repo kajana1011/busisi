@@ -24,46 +24,55 @@ $db = getDB();
 try {
     $db->beginTransaction();
 
-    // Get source period details
-    $stmt = $db->prepare("SELECT * FROM timetables
-                          WHERE stream_id = ?
-                          AND day_of_week = ?
-                          AND period_number = ?");
-    $stmt->execute([$source['streamId'], $source['day'], $source['period']]);
-    $sourcePeriod = $stmt->fetch();
+    // Support swapping single slots or ranges (for double periods)
+    $sourceSpan = isset($source['span']) ? intval($source['span']) : 1;
+    $targetSpan = isset($target['span']) ? intval($target['span']) : 1;
 
-    // Get target period details
-    $stmt = $db->prepare("SELECT * FROM timetables
-                          WHERE stream_id = ?
-                          AND day_of_week = ?
-                          AND period_number = ?");
-    $stmt->execute([$target['streamId'], $target['day'], $target['period']]);
-    $targetPeriod = $stmt->fetch();
+    // Fetch source rows for the span
+    $sourcePeriods = [];
+    $stmt = $db->prepare("SELECT * FROM timetables WHERE stream_id = ? AND day_of_week = ? AND period_number BETWEEN ? AND ? ORDER BY period_number");
+    $stmt->execute([$source['streamId'], $source['day'], $source['period'], $source['period'] + $sourceSpan - 1]);
+    $sourcePeriods = $stmt->fetchAll();
 
-    if (!$sourcePeriod || !$targetPeriod) {
-        throw new Exception('Period not found');
+    // Fetch target rows for the span
+    $targetPeriods = [];
+    $stmt = $db->prepare("SELECT * FROM timetables WHERE stream_id = ? AND day_of_week = ? AND period_number BETWEEN ? AND ? ORDER BY period_number");
+    $stmt->execute([$target['streamId'], $target['day'], $target['period'], $target['period'] + $targetSpan - 1]);
+    $targetPeriods = $stmt->fetchAll();
+
+    if (count($sourcePeriods) != $sourceSpan || count($targetPeriods) != $targetSpan) {
+        throw new Exception('Period range not found or incomplete');
     }
 
-    // Swap the periods
-    $stmt = $db->prepare("UPDATE timetables
-                          SET subject_id = ?, teacher_id = ?, is_double_period = ?
-                          WHERE id = ?");
+    if ($sourceSpan !== $targetSpan) {
+        // For safety, require equal spans for swaps
+        throw new Exception('Cannot swap ranges of different sizes');
+    }
 
-    // Update source with target data
-    $stmt->execute([
-        $targetPeriod['subject_id'],
-        $targetPeriod['teacher_id'],
-        $targetPeriod['is_double_period'],
-        $sourcePeriod['id']
-    ]);
+    // Prepare update statement
+    $updateStmt = $db->prepare("UPDATE timetables SET subject_id = ?, teacher_id = ?, is_double_period = ? WHERE id = ?");
 
-    // Update target with source data
-    $stmt->execute([
-        $sourcePeriod['subject_id'],
-        $sourcePeriod['teacher_id'],
-        $sourcePeriod['is_double_period'],
-        $targetPeriod['id']
-    ]);
+    // Swap each corresponding period
+    for ($i = 0; $i < $sourceSpan; $i++) {
+        $s = $sourcePeriods[$i];
+        $t = $targetPeriods[$i];
+
+        // Write target into source row
+        $updateStmt->execute([
+            $t['subject_id'],
+            $t['teacher_id'],
+            $t['is_double_period'],
+            $s['id']
+        ]);
+
+        // Write source into target row
+        $updateStmt->execute([
+            $s['subject_id'],
+            $s['teacher_id'],
+            $s['is_double_period'],
+            $t['id']
+        ]);
+    }
 
     $db->commit();
 

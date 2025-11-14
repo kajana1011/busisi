@@ -45,22 +45,39 @@ $schoolName = getSetting('school_name', 'Busisi Secondary School');
 $schoolStartTime = getSetting('school_start_time', '08:00');
 $periodDuration = intval(getSetting('period_duration', 40));
 
-// Helper function to calculate period times
+// Helper function to calculate period times accounting for breaks
 function calculatePeriodTime($startTime, $periodNumber, $duration) {
-    $startDateTime = DateTime::createFromFormat('H:i', $startTime);
-    if (!$startDateTime) {
-        return 'N/A';
+    // Build timeline similarly to calculatePeriodsFromTime so headers match actual schedule
+    $periodsPerDay = intval(getSetting('periods_per_day', 8));
+    $schoolStartMinutes = timeToMinutes($startTime);
+
+    $breaks = getAllBreakPeriods();
+    $breaksByAfter = [];
+    foreach ($breaks as $b) {
+        $after = intval($b['period_number']);
+        if (!isset($breaksByAfter[$after])) $breaksByAfter[$after] = 0;
+        $breaksByAfter[$after] += intval($b['duration_minutes']);
     }
-    
-    // Calculate start time for this period
-    $periodStart = clone $startDateTime;
-    $periodStart->add(new DateInterval('PT' . (($periodNumber - 1) * $duration) . 'M'));
-    
-    // Calculate end time for this period
-    $periodEnd = clone $periodStart;
-    $periodEnd->add(new DateInterval('PT' . $duration . 'M'));
-    
-    return $periodStart->format('H:i') . ' - ' . $periodEnd->format('H:i');
+
+    $currentMinutes = $schoolStartMinutes;
+    $timeline = [];
+    for ($p = 1; $p <= max($periodsPerDay, $periodNumber); $p++) {
+        $ps = $currentMinutes;
+        $pe = $ps + $duration;
+        $timeline[$p] = ['start' => $ps, 'end' => $pe];
+        $currentMinutes = $pe;
+        if (isset($breaksByAfter[$p])) {
+            $currentMinutes += $breaksByAfter[$p];
+        }
+    }
+
+    if (!isset($timeline[$periodNumber])) return 'N/A';
+
+    $periodStart = $timeline[$periodNumber]['start'];
+    $periodEnd = $timeline[$periodNumber]['end'];
+
+    // Use minutesToTime from includes/functions.php
+    return minutesToTime($periodStart) . ' - ' . minutesToTime($periodEnd);
 }
 
 // Get stream info
@@ -204,14 +221,14 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                                                     // First half
                                                     ?>
                                                     <td class="<?php echo $cellClass; ?>"
+                                                        data-stream-id="<?php echo $selectedStreamId; ?>"
+                                                        data-day="<?php echo $day; ?>"
+                                                        data-period="<?php echo $p; ?>"
+                                                        data-subject-id="<?php echo $slot['subject_id'] ?? ''; ?>"
+                                                        data-teacher-id="<?php echo $slot['teacher_id'] ?? ''; ?>"
+                                                        data-is-double="1"
                                                         <?php if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']): ?>
                                                             draggable="true"
-                                                            data-stream-id="<?php echo $selectedStreamId; ?>"
-                                                            data-day="<?php echo $day; ?>"
-                                                            data-period="<?php echo $p; ?>"
-                                                            data-subject-id="<?php echo $slot['subject_id']; ?>"
-                                                            data-teacher-id="<?php echo $slot['teacher_id']; ?>"
-                                                            data-is-double="1"
                                                         <?php endif; ?>
                                                         >
                                                         <?php if ($slot && $slot['subject_id']): ?>
@@ -236,14 +253,14 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                                                     $secondIsSpecial = $second && !empty($second['is_special']);
                                                     ?>
                                                     <td class="<?php echo $cellClass; ?>"
+                                                        data-stream-id="<?php echo $selectedStreamId; ?>"
+                                                        data-day="<?php echo $day; ?>"
+                                                        data-period="<?php echo $p + 1; ?>"
+                                                        data-subject-id="<?php echo $second['subject_id'] ?? ''; ?>"
+                                                        data-teacher-id="<?php echo $second['teacher_id'] ?? ''; ?>"
+                                                        data-is-double="2"
                                                         <?php if (!$secondIsBreak && !$secondIsSpecial && $second && ($second['subject_id'] ?? null)): ?>
                                                             draggable="true"
-                                                            data-stream-id="<?php echo $selectedStreamId; ?>"
-                                                            data-day="<?php echo $day; ?>"
-                                                            data-period="<?php echo $p + 1; ?>"
-                                                            data-subject-id="<?php echo $second['subject_id']; ?>"
-                                                            data-teacher-id="<?php echo $second['teacher_id']; ?>"
-                                                            data-is-double="2"
                                                         <?php endif; ?>
                                                         >
                                                         <?php if ($second && ($second['subject_id'] ?? null)): ?>
@@ -271,14 +288,14 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                                             // Single period cell
                                             ?>
                                             <td class="<?php echo $cellClass; ?>"
+                                                data-stream-id="<?php echo $selectedStreamId; ?>"
+                                                data-day="<?php echo $day; ?>"
+                                                data-period="<?php echo $period; ?>"
+                                                data-subject-id="<?php echo $slot['subject_id'] ?? ''; ?>"
+                                                data-teacher-id="<?php echo $slot['teacher_id'] ?? ''; ?>"
+                                                data-is-double="<?php echo $isDouble ? '1' : '0'; ?>"
                                                 <?php if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']): ?>
                                                     draggable="true"
-                                                    data-stream-id="<?php echo $selectedStreamId; ?>"
-                                                    data-day="<?php echo $day; ?>"
-                                                    data-period="<?php echo $period; ?>"
-                                                    data-subject-id="<?php echo $slot['subject_id']; ?>"
-                                                    data-teacher-id="<?php echo $slot['teacher_id']; ?>"
-                                                    data-is-double="<?php echo $isDouble ? '1' : '0'; ?>"
                                                 <?php endif; ?>
                                                 >
                                                 <?php if ($isBreak): ?>
