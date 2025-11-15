@@ -546,6 +546,55 @@ function minutesToTime($minutes) {
 }
 
 /**
+ * Build a slot-based timeline for the day (slots include teaching periods and break slots)
+ * Returns an array keyed by slot index (1..periodsPerDay) with ['start','end','type','break']
+ * type: 'teaching' or 'break'
+ * break: break record when type=='break', otherwise null
+ */
+function getSlotTimeline($startTime) {
+    $db = getDB();
+    $schoolStartTime = getSetting('school_start_time', '08:00');
+    $periodDuration = intval(getSetting('period_duration', '40'));
+    $periodsPerDay = intval(getSetting('periods_per_day', '8'));
+
+    $startMinutes = timeToMinutes($startTime ?: $schoolStartTime);
+
+    // Load breaks keyed by the slot/period number (DB representation)
+    $stmt = $db->query("SELECT * FROM break_periods ORDER BY period_number");
+    $breaks = $stmt->fetchAll();
+    $breaksBySlot = [];
+    foreach ($breaks as $b) {
+        $slot = intval($b['period_number']);
+        $breaksBySlot[$slot] = $b;
+    }
+
+    $timeline = [];
+    $current = $startMinutes;
+    for ($s = 1; $s <= $periodsPerDay; $s++) {
+        if (isset($breaksBySlot[$s])) {
+            $dur = intval($breaksBySlot[$s]['duration_minutes']);
+            $timeline[$s] = [
+                'start' => $current,
+                'end' => $current + $dur,
+                'type' => 'break',
+                'break' => $breaksBySlot[$s]
+            ];
+            $current += $dur;
+        } else {
+            $timeline[$s] = [
+                'start' => $current,
+                'end' => $current + $periodDuration,
+                'type' => 'teaching',
+                'break' => null
+            ];
+            $current += $periodDuration;
+        }
+    }
+
+    return $timeline;
+}
+
+/**
  * Calculate period number from time, accounting for breaks
  * Returns array with start_period, end_period, and message
  */

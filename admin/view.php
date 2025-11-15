@@ -166,12 +166,24 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 120px;">Day / Time</th>
-                                    <?php for ($period = 1; $period <= $periodsPerDay; $period++): ?>
-                                        <th class="text-center" style="font-size: 0.85rem;">
-                                            <strong>Period <?php echo $period; ?></strong><br>
-                                            <small><?php echo calculatePeriodTime($schoolStartTime, $period, $periodDuration); ?></small>
-                                        </th>
-                                    <?php endfor; ?>
+                                    <?php 
+                                        // Build a slot-based timeline so break slots use their configured duration
+                                        $slotTimeline = getSlotTimeline($schoolStartTime);
+                                        for ($period = 1; $period <= $periodsPerDay; $period++): 
+                                            $slot = $slotTimeline[$period] ?? null;
+                                            if ($slot && $slot['type'] === 'break') {
+                                                $label = 'Break';
+                                                $timeRange = minutesToTime($slot['start']) . ' - ' . minutesToTime($slot['end']);
+                                            } else {
+                                                $label = 'Period ' . $period;
+                                                $timeRange = $slot ? (minutesToTime($slot['start']) . ' - ' . minutesToTime($slot['end'])) : 'N/A';
+                                            }
+                                    ?>
+                                                <th class="text-center" style="font-size: 0.85rem;">
+                                                    <strong><?php echo $label; ?></strong><br>
+                                                    <small><?php echo $timeRange; ?></small>
+                                                </th>
+                                            <?php endfor; ?>
                                 </tr>
                             </thead>
                             <tbody>
