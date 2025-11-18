@@ -105,6 +105,7 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
                             <?php if (empty($streams)): ?>
                                 <option value="">No streams available</option>
                             <?php else: ?>
+                                <option value="all" <?php echo (isset($_GET['stream_id']) && $_GET['stream_id'] === 'all') ? 'selected' : ''; ?>>All Streams</option>
                                 <?php foreach ($streams as $stream): ?>
                                     <option value="<?php echo $stream['id']; ?>"
                                             <?php echo $selectedStreamId == $stream['id'] ? 'selected' : ''; ?>>
@@ -131,7 +132,214 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
     </div>
 </div>
 
-<?php if (empty($timetable)): ?>
+<?php
+if (isset($_GET['stream_id']) && $_GET['stream_id'] === 'all') {
+    // All Streams view: periods as rows, days as columns, sub-columns for each stream
+    $allTimetables = [];
+    $streamNames = [];
+    foreach ($streams as $stream) {
+        $streamId = $stream['id'];
+        $streamNames[$streamId] = $stream['form_name'] . ' ' . $stream['name'];
+        $stmt = $db->prepare("SELECT t.*, sub.name as subject_name, sub.code as subject_code, CONCAT(te.first_name, ' ', te.last_name) as teacher_name, sp.name as special_name FROM timetables t LEFT JOIN subjects sub ON t.subject_id = sub.id LEFT JOIN teachers te ON t.teacher_id = te.id LEFT JOIN special_periods sp ON t.special_period_id = sp.id WHERE t.stream_id = ? ORDER BY t.day_of_week, t.period_number");
+        $stmt->execute([$streamId]);
+        $results = $stmt->fetchAll();
+        foreach ($results as $row) {
+            $allTimetables[$streamId][$row['day_of_week']][$row['period_number']] = $row;
+        }
+    }
+
+    $slotTimeline = getSlotTimeline($schoolStartTime);
+    ?>
+    <div class="row mb-3 no-print">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle-fill"></i>
+                <strong>Drag and Drop:</strong> You can drag periods to swap them. The system will warn you if a swap causes a conflict.
+            </div>
+        </div>
+    </div>
+    <div class="row mb-3 no-print">
+        <div class="col-12">
+            <button class="btn btn-success" onclick="exportAllStreamsToExcel()">
+                <i class="bi bi-download"></i> Export All to Excel
+            </button>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header text-center bg-primary text-white">
+                    <h4 class="mb-0"><?php echo htmlspecialchars($schoolName); ?></h4>
+                    <p class="mb-0">Full School Timetable (All Streams)</p>
+                    <small>Academic Year: <?php echo htmlspecialchars(getSetting('academic_year', date('Y'))); ?></small>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0 table-sm timetable-compact">
+                            <thead class="table-light">
+                                <tr>
+                                    <!-- Empty header for day label -->
+                                    <th style="width: 120px;"></th>
+                                    <!-- Empty header for stream name column (unnamed as requested) -->
+                                    <th style="width: 120px;"></th>
+                                    <?php for ($period = 1; $period <= $periodsPerDay; $period++): ?>
+                                        <?php $slot = $slotTimeline[$period] ?? null;
+                                            if ($slot && $slot['type'] === 'break') {
+                                                $label = 'Break';
+                                            } else {
+                                                $label = 'Period ' . $period;
+                                            }
+                                        ?>
+                                        <th class="text-center" style="font-size: 0.85rem;">
+                                            <strong><?php echo $label; ?></strong>
+                                        </th>
+                                    <?php endfor; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php for ($day = 1; $day <= $schoolDays; $day++): ?>
+                                    <?php $isFirstStreamRow = true; ?>
+                                    <?php foreach ($streams as $stream): ?>
+                                        <tr>
+                                            <?php if ($isFirstStreamRow): ?>
+                                                <td class="text-center fw-bold bg-light" style="width: 120px; vertical-align: middle;" rowspan="<?php echo count($streams); ?>">
+                                                    <?php echo getDayName($day); ?>
+                                                </td>
+                                                <?php $isFirstStreamRow = false; ?>
+                                            <?php endif; ?>
+                                            <td class="text-center fw-bold bg-light" style="width: 120px;">
+                                                <?php echo htmlspecialchars($stream['form_name'] . ' ' . $stream['name']); ?>
+                                            </td>
+                                            <?php
+                                                $streamId = $stream['id'];
+                                                $p = 1;
+                                                while ($p <= $periodsPerDay) {
+                                                    $period = $p;
+                                                    $slot = $allTimetables[$streamId][$day][$period] ?? null;
+                                                    $isBreak = $slot && $slot['is_break'];
+                                                    $isSpecial = $slot && $slot['is_special'];
+                                                    $isDouble = $slot && $slot['is_double_period'];
+
+                                                    $cellClass = 'timetable-cell';
+                                                    if ($isBreak) {
+                                                        $cellClass .= ' period-break';
+                                                    } elseif ($isSpecial) {
+                                                        $cellClass .= ' period-special';
+                                                    } elseif ($isDouble) {
+                                                        $cellClass .= ' period-double';
+                                                    }
+
+                                                    if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']) {
+                                                        $cellClass .= ' draggable';
+                                                    }
+
+                                                    // Handle double periods: render as TWO consecutive cells (first and second half)
+                                                    if ($isDouble && $p < $periodsPerDay) {
+                                                        $nextSlot = $allTimetables[$streamId][$day][$p + 1] ?? null;
+
+                                                        // First half cell (1/2)
+                                                        ?>
+                                                        <td class="<?php echo $cellClass; ?>" data-stream-id="<?php echo $streamId; ?>" data-day="<?php echo $day; ?>" data-period="<?php echo $p; ?>" data-subject-id="<?php echo $slot['subject_id'] ?? ''; ?>" data-teacher-id="<?php echo $slot['teacher_id'] ?? ''; ?>" data-is-double="1" <?php if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']): ?>draggable="true"<?php endif; ?>>
+                                                            <?php if ($slot && $slot['subject_id']): ?>
+                                                                <div class="fw-bold">
+                                                                    <?php echo htmlspecialchars($slot['subject_name']); ?>
+                                                                    <span class="badge bg-info ms-1">Double (1/2)</span>
+                                                                </div>
+                                                                <small class="text-muted d-block">
+                                                                    <?php echo htmlspecialchars($slot['teacher_name']); ?>
+                                                                </small>
+                                                                <?php if ($slot['subject_code']): ?>
+                                                                    <small class="text-muted">(<?php echo htmlspecialchars($slot['subject_code']); ?>)</small>
+                                                                <?php endif; ?>
+                                                            <?php else: ?>
+                                                                <span class="text-muted">Free</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <?php
+
+                                                        // Second half cell (2/2) - mirror first half if continuation slot is empty
+                                                        $second = $nextSlot ? $nextSlot : $slot;
+                                                        $secondIsBreak = $second && !empty($second['is_break']);
+                                                        $secondIsSpecial = $second && !empty($second['is_special']);
+                                                        ?>
+                                                        <td class="<?php echo $cellClass; ?>" data-stream-id="<?php echo $streamId; ?>" data-day="<?php echo $day; ?>" data-period="<?php echo $p + 1; ?>" data-subject-id="<?php echo $second['subject_id'] ?? ''; ?>" data-teacher-id="<?php echo $second['teacher_id'] ?? ''; ?>" data-is-double="2" <?php if (!$secondIsBreak && !$secondIsSpecial && $second && ($second['subject_id'] ?? null)): ?>draggable="true"<?php endif; ?>>
+                                                            <?php if ($second && ($second['subject_id'] ?? null)): ?>
+                                                                <div class="fw-bold">
+                                                                    <?php echo htmlspecialchars($second['subject_name']); ?>
+                                                                    <span class="badge bg-info ms-1">Double (2/2)</span>
+                                                                </div>
+                                                                <small class="text-muted d-block">
+                                                                    <?php echo htmlspecialchars($second['teacher_name']); ?>
+                                                                </small>
+                                                                <?php if ($second['subject_code']): ?>
+                                                                    <small class="text-muted">(<?php echo htmlspecialchars($second['subject_code']); ?>)</small>
+                                                                <?php endif; ?>
+                                                            <?php else: ?>
+                                                                <span class="text-muted">Free</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <?php
+                                                        $p += 2;
+                                                        continue;
+                                                    }
+
+                                                    // Single period cell
+                                                    ?>
+                                                    <td class="<?php echo $cellClass; ?>" data-stream-id="<?php echo $streamId; ?>" data-day="<?php echo $day; ?>" data-period="<?php echo $period; ?>" data-subject-id="<?php echo $slot['subject_id'] ?? ''; ?>" data-teacher-id="<?php echo $slot['teacher_id'] ?? ''; ?>" data-is-double="<?php echo $isDouble ? '1' : '0'; ?>" <?php if (!$isBreak && !$isSpecial && $slot && $slot['subject_id']): ?>draggable="true"<?php endif; ?>>
+                                                        <?php if ($isBreak): ?>
+                                                            <strong>BREAK</strong>
+                                                        <?php elseif ($isSpecial): ?>
+                                                            <strong><?php echo strtoupper(htmlspecialchars($slot['special_name'] ?? 'SPECIAL')); ?></strong>
+                                                        <?php elseif ($slot && $slot['subject_id']): ?>
+                                                            <div class="fw-bold">
+                                                                <?php echo htmlspecialchars($slot['subject_name']); ?>
+                                                            </div>
+                                                            <small class="text-muted d-block">
+                                                                <?php echo htmlspecialchars($slot['teacher_name']); ?>
+                                                            </small>
+                                                            <?php if ($slot['subject_code']): ?>
+                                                                <small class="text-muted">(<?php echo htmlspecialchars($slot['subject_code']); ?>)</small>
+                                                            <?php endif; ?>
+                                                        <?php else: ?>
+                                                            <span class="text-muted">Free</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <?php
+                                                    $p++;
+                                                }
+                                            ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endfor; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Legend -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h6>Legend:</h6>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div>
+                            <span class="badge bg-warning text-dark">Break</span> Break Period
+                        </div>
+                        <div>
+                            <span class="badge" style="background-color: #a855f7;">Special</span> Special Period (Sports, Debate, Religion)
+                        </div>
+                        <div>
+                            <span class="badge bg-info">Double</span> Double Period (consecutive)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php } else if (empty($timetable)) { ?>
     <div class="row">
         <div class="col-12">
             <div class="alert alert-warning">
@@ -140,7 +348,7 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
             </div>
         </div>
     </div>
-<?php else: ?>
+<?php } else { ?>
     <!-- Timetable Header -->
     <div class="row mb-3 no-print">
         <div class="col-12">
@@ -363,7 +571,7 @@ $streamInfo = $selectedStreamId ? getStreamById($selectedStreamId) : null;
             </div>
         </div>
     </div>
-<?php endif; ?>
+<?php } ?>
 
 <style>
 @media print {

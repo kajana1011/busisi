@@ -335,17 +335,16 @@ class TimetableGenerator {
                     ]);
                 } elseif ($slot['type'] === 'class') {
                     // Regular class
-                    if (isset($slot['is_continuation']) && $slot['is_continuation']) {
-                        // Skip - this is the second part of a double period
-                        continue;
-                    }
+                    // Insert every slot (both first and second half of doubles)
+                    // Only the FIRST half gets is_double_period = 1
+                    $isDoubleFlag = (isset($slot['is_continuation']) && $slot['is_continuation']) ? 0 : $slot['is_double'];
 
                     $stmt->execute([
                         $streamId, $day, $period,
                         $slot['subject_id'],
                         $slot['teacher_id'],
                         0, 0,
-                        $slot['is_double'],
+                        $isDoubleFlag,
                         null
                     ]);
                 }

@@ -301,6 +301,26 @@ body {
     }
 }
 
+/* Compact timetable tweaks */
+.timetable-compact th,
+.timetable-compact td {
+    font-size: 0.78rem;
+}
+
+.timetable-compact .timetable-cell {
+    padding: 0.4rem;
+    min-height: 36px;
+}
+
+.timetable-compact thead th {
+    font-size: 0.75rem;
+}
+
+.timetable-compact .badge {
+    font-size: 0.6rem;
+    padding: 0.25rem 0.45rem;
+}
+
 /* Accessibility */
 .sr-only {
     position: absolute;

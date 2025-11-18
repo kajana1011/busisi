@@ -74,6 +74,20 @@ function handleDragOver(e) {
         e.preventDefault();
     }
     e.dataTransfer.dropEffect = 'move';
+    // Auto-scroll when dragging near top/bottom of viewport
+    try {
+        const margin = 80; // px from edge to start scrolling
+        const speed = 40; // px per event
+        const clientY = (e.clientY !== undefined) ? e.clientY : (e.touches && e.touches[0] && e.touches[0].clientY) || 0;
+        if (clientY > 0 && clientY < margin) {
+            window.scrollBy(0, -speed);
+        } else if (clientY > (window.innerHeight - margin)) {
+            window.scrollBy(0, speed);
+        }
+    } catch (err) {
+        // ignore scrolling errors
+    }
+
     return false;
 }
 
@@ -112,20 +126,43 @@ function handleDrop(e) {
             isDouble: this.dataset.isDouble
         };
 
+        // Prevent cross-stream swaps: only allow drops on same stream
+        if (draggedData && target.streamId !== draggedData.streamId) {
+            alert('You can only swap periods within the same stream.');
+            return false;
+        }
+
+        // Prevent swapping double periods with single periods
+        // draggedData.isDouble will be '1' for double (first half) or '0' for single
+        const draggedIsDouble = draggedData && draggedData.isDouble === '1';
+        const targetIsDouble = target.isDouble === '1' || target.isDouble === '2';
+        
+        if (draggedIsDouble !== targetIsDouble) {
+            alert('You can only swap double periods with other double periods, and single periods with other single periods.');
+            return false;
+        }
+
         // If dragging a double (first half), attempt a double move
         if (draggedData && draggedData.isDouble === '1') {
-            // Determine target second slot
-            const targetPeriod = parseInt(target.period, 10);
+            // Determine base target period. If user dropped onto the second half (isDouble === '2'),
+            // normalize so the base period is the first half.
+            let targetPeriod = parseInt(target.period, 10);
+            if (target.isDouble === '2') {
+                targetPeriod = targetPeriod - 1;
+            }
             const targetNextPeriod = targetPeriod + 1;
             const targetNextCell = document.querySelector(`.timetable-cell[data-stream-id="${target.streamId}"][data-day="${target.day}"][data-period="${targetNextPeriod}"]`);
 
-            if (!targetNextCell || targetNextCell.classList.contains('period-break')) {
-                alert('Cannot move a double period here because there is no consecutive free slot.');
+            // Also ensure the base target cell exists
+            const targetBaseCell = document.querySelector(`.timetable-cell[data-stream-id="${target.streamId}"][data-day="${target.day}"][data-period="${targetPeriod}"]`);
+
+            if (!targetBaseCell || !targetNextCell || targetBaseCell.classList.contains('period-break') || targetNextCell.classList.contains('period-break')) {
+                alert('Cannot move a double period here because there is no consecutive slot available.');
                 return false;
             }
 
             // Build targetData with span=2
-            const targetData = Object.assign({}, target, { span: 2 });
+            const targetData = Object.assign({}, target, { span: 2, period: String(targetPeriod) });
 
             // Also build source data with span=2
             const sourceData = Object.assign({}, draggedData, { span: 2 });
@@ -238,6 +275,18 @@ async function swapPeriods(source, target) {
     } catch (error) {
         console.error('Error swapping periods:', error);
         alert('Error swapping periods. Please try again.');
+    }
+}
+
+/**
+ * Export all streams timetable to Excel
+ */
+async function exportAllStreamsToExcel() {
+    try {
+        window.location.href = `exports.php?all_streams=1&format=excel`;
+    } catch (error) {
+        console.error('Error exporting all streams:', error);
+        alert('Error exporting timetable. Please try again.');
     }
 }
 
