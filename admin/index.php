@@ -51,7 +51,7 @@ $isReady = array_reduce($readiness, function($carry, $item) {
 <!-- Statistics Cards -->
 <div class="row g-4 mb-4">
     <div class="col-md-6 col-lg-4">
-        <div class="card bg-primary text-white">
+        <div class="card bg-primary text-white" style="cursor: pointer;" data-toggle="modal" data-target="#viewModal" onclick="loadItems('forms')">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -67,7 +67,7 @@ $isReady = array_reduce($readiness, function($carry, $item) {
     </div>
 
     <div class="col-md-6 col-lg-4">
-        <div class="card bg-success text-white">
+        <div class="card bg-success text-white" style="cursor: pointer;" data-toggle="modal" data-target="#viewModal" onclick="loadItems('streams')">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -83,7 +83,7 @@ $isReady = array_reduce($readiness, function($carry, $item) {
     </div>
 
     <div class="col-md-6 col-lg-4">
-        <div class="card bg-info text-white">
+        <div class="card bg-info text-white" style="cursor: pointer;" data-toggle="modal" data-target="#viewModal" onclick="loadItems('subjects')">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -99,7 +99,7 @@ $isReady = array_reduce($readiness, function($carry, $item) {
     </div>
 
     <div class="col-md-6 col-lg-4">
-        <div class="card bg-warning text-white">
+        <div class="card bg-warning text-white" style="cursor: pointer;" data-toggle="modal" data-target="#viewModal" onclick="loadItems('teachers')">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -115,7 +115,7 @@ $isReady = array_reduce($readiness, function($carry, $item) {
     </div>
 
     <div class="col-md-6 col-lg-4">
-        <div class="card bg-danger text-white">
+        <div class="card bg-danger text-white" style="cursor: pointer;" data-toggle="modal" data-target="#viewModal" onclick="loadItems('assignments')">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -298,5 +298,60 @@ $isReady = array_reduce($readiness, function($carry, $item) {
         </div>
     </div>
 </div>
+
+<!-- Modal for viewing items -->
+<div class="modal fade" id="viewModal" tabindex="-1" role="dialog" aria-labelledby="viewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewModalLabel">Items</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalContent">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function loadItems(type) {
+        const modalLabel = document.getElementById('viewModalLabel');
+        const modalContent = document.getElementById('modalContent');
+        
+        // Update modal title
+        const titles = {
+            'forms': 'Available Forms',
+            'streams': 'Available Streams',
+            'subjects': 'Available Subjects',
+            'teachers': 'Available Teachers',
+            'assignments': 'Subject Assignments'
+        };
+        modalLabel.textContent = titles[type] || 'Items';
+        
+        // Show loading spinner
+        modalContent.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        `;
+        
+        // Fetch data via AJAX
+        fetch(`ajax/get_items.php?type=${type}`)
+            .then(response => response.text())
+            .then(data => {
+                modalContent.innerHTML = data;
+            })
+            .catch(error => {
+                modalContent.innerHTML = `<div class="alert alert-danger">Error loading items: ${error.message}</div>`;
+            });
+    }
+</script>
 
 <?php require_once '../includes/footer.php'; ?>

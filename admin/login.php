@@ -72,7 +72,7 @@ $showNav = false;
 
                     <div class="mt-4 text-center">
                         <small class="text-muted">
-                            Default credentials: admin / admin123
+                            
                         </small>
                     </div>
                 </div>

@@ -4,10 +4,10 @@
     <footer class="mt-5 py-4 bg-light border-top">
         <div class="container text-center text-muted">
             <p class="mb-0">
-                &copy; <?php echo date('Y'); ?> Busisi Secondary School Timetable Generator
+                &copy; <?php echo date('Y'); ?> Busisi Secondary School
             </p>
-            <p class="mb-0 small">
-                Made with <i class="bi bi-heart-fill text-danger"></i> for education
+            <p class="mb-0 small text-end">
+                Developed by Revocajana | <a href="https://wa.me/255769349613" target="_blank">WhatsApp Support</a>
             </p>
         </div>
     </footer>
