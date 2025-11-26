@@ -501,7 +501,7 @@ function formatTime($minutes) {
  */
 function getAssignedStreamsForSubject($subjectId) {
     $db = getDB();
-    $stmt = $db->prepare("SELECT DISTINCT f.name as form_name, s.name as stream_name
+    $stmt = $db->prepare("SELECT DISTINCT f.name as form_name, f.display_order, s.name as stream_name
                          FROM subject_assignments sa
                          JOIN streams s ON sa.stream_id = s.id
                          JOIN forms f ON s.form_id = f.id
@@ -691,4 +691,41 @@ function updateSpecialPeriod($id, $name, $dayOfWeek, $startPeriod, $endPeriod) {
     $db = getDB();
     $stmt = $db->prepare("UPDATE special_periods SET name = ?, day_of_week = ?, start_period = ?, end_period = ? WHERE id = ?");
     return $stmt->execute([$name, $dayOfWeek, $startPeriod, $endPeriod, $id]);
+}
+
+/**
+ * Delete all timetables for a specific stream
+ */
+function deleteTimetableForStream($streamId) {
+    $db = getDB();
+    $stmt = $db->prepare("DELETE FROM timetables WHERE stream_id = ?");
+    return $stmt->execute([$streamId]);
+}
+
+/**
+ * Delete all timetables for all streams
+ */
+function deleteAllTimetables() {
+    $db = getDB();
+    $stmt = $db->query("DELETE FROM timetables");
+    return $stmt !== false;
+}
+
+/**
+ * Get timetable count for a stream
+ */
+function getTimetableCountForStream($streamId) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM timetables WHERE stream_id = ?");
+    $stmt->execute([$streamId]);
+    return intval($stmt->fetchColumn());
+}
+
+/**
+ * Get total timetable records count
+ */
+function getTotalTimetableCount() {
+    $db = getDB();
+    $stmt = $db->query("SELECT COUNT(*) FROM timetables");
+    return intval($stmt->fetchColumn());
 }

@@ -163,6 +163,9 @@ if (isset($_GET['stream_id']) && $_GET['stream_id'] === 'all') {
             <button class="btn btn-success" onclick="exportAllStreamsToExcel()">
                 <i class="bi bi-download"></i> Export All to Excel
             </button>
+            <button class="btn btn-danger" onclick="resetTimetable('all')">
+                <i class="bi bi-arrow-counterclockwise"></i> Reset All Timetables
+            </button>
         </div>
     </div>
     <div class="row">
@@ -356,6 +359,15 @@ if (isset($_GET['stream_id']) && $_GET['stream_id'] === 'all') {
                 <i class="bi bi-info-circle-fill"></i>
                 <strong>Drag and Drop:</strong> You can drag periods to swap them. The system will warn you if a swap causes a conflict.
             </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="row mb-3 no-print">
+        <div class="col-12">
+            <button class="btn btn-danger" onclick="resetTimetable(<?php echo $selectedStreamId; ?>)">
+                <i class="bi bi-arrow-counterclockwise"></i> Reset This Timetable
+            </button>
         </div>
     </div>
 
